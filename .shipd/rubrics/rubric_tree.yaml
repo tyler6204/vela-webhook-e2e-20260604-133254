@@ -1,0 +1,9 @@
+rubric:
+  label: "Task quality"
+  children:
+    - label: "Correctness"
+      points: 5
+    - label: "Reasoning"
+      points: 3
+    - label: "Communication"
+      points: 2

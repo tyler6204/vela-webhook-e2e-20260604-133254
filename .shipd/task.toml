@@ -1,0 +1,14 @@
+[agent]
+instruction = ".shipd/instruction.md"
+
+[commands]
+setup = "bash .shipd/public/setup.sh"
+smoke = "bash .shipd/public/smoke_tests/run.sh"
+verify = "python .shipd/private/hidden_tests/verifier.py"
+apply_reference = "git apply .shipd/private/reference.patch"
+
+[rubrics]
+rubric_tree = ".shipd/rubrics/rubric_tree.yaml"
+
+[outputs]
+required = ["metrics.json", "report.md"]
