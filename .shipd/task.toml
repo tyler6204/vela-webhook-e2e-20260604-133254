@@ -1,0 +1,54 @@
+# Prometheus reads this file from the repo root at .shipd/task.toml.
+# Start here. This file tells Prometheus where the instructions, setup script,
+# private verifier, reference patch, and rubric live.
+
+[proposal]
+# Human-readable task name. Usually this is copied from your Shipd submission.
+title = "[replace with your Prometheus submission title]"
+
+# Plain-English task summary.
+description = """
+[explain the task in one short paragraph. What should a solver build, fix, or investigate?]
+"""
+
+# Why this task is worth reviewing. This means the evidence that a solution is
+# real and useful, not just cosmetic.
+why_this_matters = """
+[explain what a good solution proves. Mention the main metric, test, or evidence reviewers should care about.]
+"""
+
+# Optional context. Delete the # only if it helps reviewers understand the task.
+# source_url = "https://example.com/paper-or-issue"
+# source_type = "paper | public_repo | issue | design_doc | other"
+# estimated_solver_time = "2-4 hours | 1 day | unknown"
+# family = "training_debugger | paper_implementation | inference_optimizer | other"
+
+[workspace]
+# Keep "." for v0. The repo itself is the workspace.
+root = "."
+
+[agent]
+# Solver-facing instructions. This is the main file the solver reads.
+instruction = ".shipd/instruction.md"
+
+# Files/folders Prometheus should hide from solvers. private/ is for reviewers only.
+hide = ["private"]
+
+[commands]
+# Public setup command. Keep this minimal and make it work from the repo root.
+setup = "bash .shipd/public/setup.sh"
+
+# Private evaluator command. This checks the final solver output.
+verify = "python .shipd/private/hidden_tests/verifier.py"
+
+# Private reference solution patch. Reviewers use this to prove the task is solvable.
+apply_reference = "git apply .shipd/private/reference.patch"
+
+[rubrics]
+# Reviewer scoring rubric.
+rubric_tree = ".shipd/rubrics/rubric_tree.yaml"
+
+[outputs]
+# Files a solver should produce by the end of the task.
+# If your verifier does not need one of these, remove it here and update verifier.py.
+required = ["metrics.json", "report.md"]

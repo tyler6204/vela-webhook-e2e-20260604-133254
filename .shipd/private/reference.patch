@@ -1,0 +1,21 @@
+diff --git a/training/checkpoint.py b/training/checkpoint.py
+index 84b7c1d..6f91a12 100644
+--- a/training/checkpoint.py
++++ b/training/checkpoint.py
+@@ -1,9 +1,15 @@
+ def save_checkpoint(path, model, optimizer, scheduler, rng):
+     torch.save({
+         "model": model.state_dict(),
++        "optimizer": optimizer.state_dict(),
++        "scheduler": scheduler.state_dict(),
++        "rng_state": rng.get_state(),
+     }, path)
+
+ def load_checkpoint(path, model, optimizer, scheduler, rng):
+     state = torch.load(path, map_location="cpu")
+     model.load_state_dict(state["model"])
++    optimizer.load_state_dict(state["optimizer"])
++    scheduler.load_state_dict(state["scheduler"])
++    rng.set_state(state["rng_state"])
+     return state
+	
