@@ -9,8 +9,8 @@ system detail. Edit the files below, commit them, then click "Refresh repo" in P
    The typed table of contents. Fill out proposal, workspace, agent, commands, rubrics, and outputs.
    Your editor can hover fields for descriptions from .shipd/.types/shipd.d.ts.
 
-2. .shipd/instruction.md
-   The instructions a solver will read. Write this like you are assigning work to another engineer.
+2. .shipd/prompt.md
+   The prompt a solver will read first. Write it like a concise issue for another engineer.
 
 3. .shipd/public/setup.sh
    A simple script that installs dependencies from the repo root.
@@ -32,7 +32,7 @@ system detail. Edit the files below, commit them, then click "Refresh repo" in P
 
 ## Visibility
 
-- Solvers can see instruction.md and public/.
+- Solvers can see prompt.md and public/.
 - Solvers should not see private/.
 
 ## Quick rule

@@ -7,7 +7,7 @@ export type PrometheusTask = {
   /** Workspace settings. Keep root as "." for Prometheus v0. */
   workspace: WorkspaceConfig;
 
-  /** Solver-facing instruction and visibility settings. */
+  /** Solver-facing prompt and visibility settings. */
   agent: AgentConfig;
 
   /** Commands Prometheus uses to set up, verify, and prove the task. */
@@ -49,8 +49,8 @@ export type WorkspaceConfig = {
 };
 
 export type AgentConfig = {
-  /** Markdown file the solver reads first. */
-  instruction: string;
+  /** Markdown prompt the solver reads first. Keep it concise, concrete, and task-specific. */
+  prompt: string;
 
   /** .shipd-relative paths hidden from solvers. Keep "private" unless reviewers explicitly change the layout. */
   hide: string[];

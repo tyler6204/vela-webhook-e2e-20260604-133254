@@ -2,9 +2,9 @@ import { defineTask } from "./.types/shipd";
 
 export default defineTask({
   proposal: {
-    title: "Newer Submission",
-    description: `This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test`,
-    whyThisMatters: `This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test This is a test`,
+    title: "Test",
+    description: `Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 `,
+    whyThisMatters: `Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 Test 1 2 3 `,
 
     // Optional context. Fill these only when they are true for this task.
     sourceType: "public_repo",
@@ -16,7 +16,7 @@ export default defineTask({
   },
 
   agent: {
-    instruction: ".shipd/instruction.md",
+    prompt: ".shipd/prompt.md",
     hide: ["private"],
   },
 
