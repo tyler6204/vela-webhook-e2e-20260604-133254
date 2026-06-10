@@ -5,10 +5,9 @@ system detail. Edit the files below, commit them, then click "Refresh repo" in P
 
 ## Edit these files
 
-1. .shipd/task.toml
-   The table of contents. Only commands/setup, commands/verify, commands/apply_reference,
-   rubrics/rubric_tree, agent/instruction, and outputs/required are required. Proposal metadata is
-   for humans and can stay minimal.
+1. .shipd/task.ts
+   The typed table of contents. Fill out proposal, workspace, agent, commands, rubrics, and outputs.
+   Your editor can hover fields for descriptions from .shipd/.types/shipd.d.ts.
 
 2. .shipd/instruction.md
    The instructions a solver will read. Write this like you are assigning work to another engineer.
@@ -27,6 +26,9 @@ system detail. Edit the files below, commit them, then click "Refresh repo" in P
 
 7. .shipd/rubrics/rubric_tree.yaml
    How reviewers should score the work.
+
+8. .shipd/.types/shipd.d.ts
+   Local TypeScript declarations for editor help. Do not edit this unless Shipd changes the contract.
 
 ## Visibility
 
