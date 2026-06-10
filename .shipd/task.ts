@@ -2,7 +2,7 @@ import { defineTask } from "./.types/shipd";
 
 export default defineTask({
   proposal: {
-    title: "New Submission",
+    title: "Testing Submissions",
 
   },
 
