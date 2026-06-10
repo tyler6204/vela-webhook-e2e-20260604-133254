@@ -1,7 +1,7 @@
 # Reviewer scoring rubric.
 # Edit the labels and points so they match your task. Points should add up to 10.
 rubric:
-  label: "Prometheus task"
+  label: "Task"
   children:
     - label: "Understands the problem"
       points: 3

@@ -1,7 +1,7 @@
 # [task title]
 
 Write this like a short issue you would hand to a strong engineer. Keep it concrete and human.
-Do not describe Shipd or Prometheus here; describe the work inside this repo.
+Do not describe the review system here; describe the work inside this repo.
 
 ## Task
 

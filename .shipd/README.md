@@ -1,42 +1,25 @@
-# Prometheus task files
+# Task files
 
-This folder tells Prometheus how to run and review your task. You do not need to understand every
-system detail. Edit the files below, commit them, then click "Refresh repo" in Prometheus.
+Edit these files, commit them, then run setup checks.
 
-## Edit these files
+## Start here
 
-1. .shipd/task.ts
-   The typed table of contents. Fill out proposal, workspace, agent, commands, rubrics, and outputs.
-   Your editor can hover fields for descriptions from .shipd/.types/shipd.d.ts.
+- `.shipd/prompt.md` is the task the solver reads. Write it like a concise issue for another engineer.
+- `.shipd/task.ts` tells the checker where the prompt, setup, verifier, reference patch, and rubric live.
+- `.shipd/private/` is reviewer-only. Solvers should not see those files.
 
-2. .shipd/prompt.md
-   The prompt a solver will read first. Write it like a concise issue for another engineer.
+## Files
 
-3. .shipd/public/setup.sh
-   A simple script that installs dependencies from the repo root.
+- `.shipd/task.ts` - typed task manifest.
+- `.shipd/prompt.md` - solver prompt.
+- `.shipd/public/setup.sh` - public setup command.
+- `.shipd/private/reference.patch` - reviewer-only reference solution.
+- `.shipd/private/hidden_tests/verifier.py` - reviewer-only verifier.
+- `.shipd/private/reviewer_notes.md` - reviewer notes.
+- `.shipd/rubrics/rubric_tree.yaml` - reviewer rubric.
+- `.shipd/.types/shipd.d.ts` - local editor types. Do not edit unless the task contract changes.
 
-4. .shipd/private/hidden_tests/verifier.py
-   Reviewer-only checks. This should fail bad solutions and pass good ones.
+## Rule
 
-5. .shipd/private/reference.patch
-   A reviewer-only example solution patch. It proves the task is solvable.
-
-6. .shipd/private/reviewer_notes.md
-   Notes for reviewers: expected solution, edge cases, and what the hidden verifier is checking.
-
-7. .shipd/rubrics/rubric_tree.yaml
-   How reviewers should score the work.
-
-8. .shipd/.types/shipd.d.ts
-   Local TypeScript declarations for editor help. Do not edit this unless Shipd changes the contract.
-
-## Visibility
-
-- Solvers can see prompt.md and public/.
-- Solvers should not see private/.
-
-## Quick rule
-
-If a file has bracketed edit prompts, replace them with task-specific content.
-If you are not using a file, delete the prompt or make it accurate.
-Do not invent a paper URL, metric, or estimate just to fill a field.
+Replace starter text with task-specific content. If a file still describes checkpoint examples,
+it is not ready.

@@ -1,16 +1,19 @@
-export declare function defineTask(task: PrometheusTask): PrometheusTask;
+export declare function defineTask(task: Task): Task;
 
-export type PrometheusTask = {
-  /** Human-readable task name. Usually copied from your Shipd submission. */
+export type Task = {
+  /** Task metadata. Keep the full task wording in prompt.md. */
   proposal: TaskProposal;
 
-  /** Workspace settings. Keep root as "." for Prometheus v0. */
+  /** Repository-relative workspace settings. */
   workspace: WorkspaceConfig;
 
-  /** Solver-facing prompt and visibility settings. */
-  agent: AgentConfig;
+  /** Markdown file the solver reads first. */
+  prompt: string;
 
-  /** Commands Prometheus uses to set up, verify, and prove the task. */
+  /** Files or folders that are only for reviewers and checks. */
+  privateFiles: string[];
+
+  /** Commands used to set up, verify, and apply the reference solution. */
   commands: CommandConfig;
 
   /** Reviewer scoring rubric locations. */
@@ -21,39 +24,16 @@ export type PrometheusTask = {
 };
 
 export type TaskProposal = {
-  /** Clear title reviewers can scan in lists. Replace bracketed starter text before refreshing Git. */
+  /** Clear task title. Replace bracketed starter text before running checks. */
   title: string;
 
-  /** One short paragraph explaining the concrete work a solver should perform. */
-  description: string;
-
-  /** The evidence that a good solution proves, such as a metric, benchmark, or verifier signal. */
-  whyThisMatters: string;
-
-  /** Optional source material for the task, such as a paper, issue, or design doc. */
+  /** Optional paper, issue, or design document URL. Leave it out when there is no source. */
   sourceUrl?: string;
-
-  /** Optional source category for reviewer triage. */
-  sourceType?: "paper" | "public_repo" | "production_spec" | "private_project" | "internal_style_spec" | "other";
-
-  /** Optional expected solver horizon. */
-  estimatedSolverTime?: "two_hours" | "four_hours" | "eight_hours" | "one_day" | "two_days" | "forty_hours";
-
-  /** Optional task family. */
-  family?: "training_debugger" | "paper_implementation" | "inference_optimizer" | "grader_forensics" | "dataset_forensics" | "synthetic_data" | "other_research_engineering";
 };
 
 export type WorkspaceConfig = {
-  /** Repository-relative workspace root. Prometheus v0 expects ".". */
+  /** Repository-relative workspace root. Use "." when the repo root is the task root. */
   root: ".";
-};
-
-export type AgentConfig = {
-  /** Markdown prompt the solver reads first. Keep it concise, concrete, and task-specific. */
-  prompt: string;
-
-  /** .shipd-relative paths hidden from solvers. Keep "private" unless reviewers explicitly change the layout. */
-  hide: string[];
 };
 
 export type CommandConfig = {

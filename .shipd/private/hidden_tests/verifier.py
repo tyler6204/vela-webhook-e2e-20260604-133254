@@ -5,7 +5,7 @@ Edit this file so it checks the real outputs for your task.
 
 How it is used:
 - A solver works on the repo and produces outputs like metrics.json and report.md.
-- Prometheus runs this script privately.
+- The checker runs this script privately.
 - Exit 0 means the solution passed.
 - Exit 1 means the solution failed.
 
