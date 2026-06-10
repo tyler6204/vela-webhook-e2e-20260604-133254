@@ -5,7 +5,7 @@ Edit these files, commit them, then run setup checks.
 ## Start here
 
 - `.shipd/prompt.md` is the task the solver reads. Write it like a concise issue for another engineer.
-- `.shipd/task.ts` tells the checker where the prompt, setup, verifier, reference patch, and rubric live.
+- `.shipd/task.ts` is the typed checklist. It points at files and contains the scoring rubric.
 - `.shipd/private/` is reviewer-only. Solvers should not see those files.
 
 ## Files
@@ -16,7 +16,6 @@ Edit these files, commit them, then run setup checks.
 - `.shipd/private/reference.patch` - reviewer-only reference solution.
 - `.shipd/private/hidden_tests/verifier.py` - reviewer-only verifier.
 - `.shipd/private/reviewer_notes.md` - reviewer notes.
-- `.shipd/rubrics/rubric_tree.yaml` - reviewer rubric.
 - `.shipd/.types/shipd.d.ts` - local editor types. Do not edit unless the task contract changes.
 
 ## Rule
