@@ -4,7 +4,7 @@
 
 [proposal]
 # Human-readable task name. Usually this is copied from your Shipd submission.
-title = "test"
+title = "[replace with your Prometheus submission title]"
 
 # Plain-English task summary.
 description = """
