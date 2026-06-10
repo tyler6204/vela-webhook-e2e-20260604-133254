@@ -1,0 +1,17 @@
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test tooling
+.pytest_cache/
+
+# Solver outputs (generated during task completion)
+metrics.json
+report.md
+
+# OS
+.DS_Store

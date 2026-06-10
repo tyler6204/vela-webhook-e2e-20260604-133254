@@ -3,7 +3,7 @@ import { defineTask } from "./.types/shipd";
 export default defineTask({
   proposal: {
     title: "Testing Submissions",
-
+    sourceUrl: "https://docs.github.com/en/webhooks/webhook-events-and-payloads#push",
   },
 
   workspace: {

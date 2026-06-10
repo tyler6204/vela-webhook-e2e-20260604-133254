@@ -1,20 +1,8 @@
 #!/usr/bin/env python3
-"""Private verifier for reviewers.
-
-Edit this file so it checks the real outputs for your task.
-
-How it is used:
-- A solver works on the repo and produces outputs like metrics.json and report.md.
-- The checker runs this script privately.
-- Exit 0 means the solution passed.
-- Exit 1 means the solution failed.
-
-The checks below are examples. Replace the metric names and thresholds with the ones your task
-actually needs.
-"""
+"""Private verifier for the GitHub webhook submission task."""
 
 import json
-import math
+import subprocess
 from pathlib import Path
 
 METRICS_PATH = Path("metrics.json")
@@ -36,23 +24,45 @@ try:
 except json.JSONDecodeError as exc:
     fail(f"metrics.json is not valid JSON: {exc}")
 
-required_metrics = ["resume_loss_delta", "clean_loss", "resumed_loss"]  # edit these
+required_metrics = [
+    "tests_passed",
+    "tests_total",
+    "invalid_signature_rejected",
+    "push_fields_extracted",
+]
 missing = [key for key in required_metrics if key not in metrics]
 if missing:
     fail(f"Missing required metrics: {missing}")
 
-resume_delta = float(metrics["resume_loss_delta"])
-clean_loss = float(metrics["clean_loss"])
-resumed_loss = float(metrics["resumed_loss"])
+tests_passed = int(metrics["tests_passed"])
+tests_total = int(metrics["tests_total"])
+invalid_signature_rejected = bool(metrics["invalid_signature_rejected"])
+push_fields_extracted = bool(metrics["push_fields_extracted"])
+
+report_text = REPORT_PATH.read_text().lower()
 
 checks = {
-    "resume_loss_delta": resume_delta <= 0.02,  # edit this threshold
-    "clean_loss_finite": math.isfinite(clean_loss) and clean_loss < 10,
-    "resumed_loss_finite": math.isfinite(resumed_loss) and resumed_loss < 10,
-    "report_mentions_checkpoint": "checkpoint" in REPORT_PATH.read_text().lower(),
+    "tests_passed_equals_total": tests_passed == tests_total and tests_total > 0,
+    "invalid_signature_rejected": invalid_signature_rejected,
+    "push_fields_extracted": push_fields_extracted,
+    "report_mentions_signature": "signature" in report_text,
+    "report_mentions_webhook": "webhook" in report_text,
 }
 
+pytest_result = subprocess.run(
+    ["python", "-m", "pytest", "tests/test_github_webhook.py", "-q"],
+    capture_output=True,
+    text=True,
+)
+checks["pytest_passes"] = pytest_result.returncode == 0
+
 if not all(checks.values()):
-    fail(f"Hidden verifier checks failed: {checks}")
+    payload = {"ok": False, "checks": checks}
+    if pytest_result.stdout:
+        payload["pytest_stdout"] = pytest_result.stdout[-2000:]
+    if pytest_result.stderr:
+        payload["pytest_stderr"] = pytest_result.stderr[-2000:]
+    print(json.dumps(payload))
+    raise SystemExit(1)
 
 print(json.dumps({"ok": True, "checks": checks}))
