@@ -1,21 +1,33 @@
-diff --git a/training/checkpoint.py b/training/checkpoint.py
-index 84b7c1d..6f91a12 100644
---- a/training/checkpoint.py
-+++ b/training/checkpoint.py
-@@ -1,9 +1,15 @@
- def save_checkpoint(path, model, optimizer, scheduler, rng):
-     torch.save({
-         "model": model.state_dict(),
-+        "optimizer": optimizer.state_dict(),
-+        "scheduler": scheduler.state_dict(),
-+        "rng_state": rng.get_state(),
-     }, path)
-
- def load_checkpoint(path, model, optimizer, scheduler, rng):
-     state = torch.load(path, map_location="cpu")
-     model.load_state_dict(state["model"])
-+    optimizer.load_state_dict(state["optimizer"])
-+    scheduler.load_state_dict(state["scheduler"])
-+    rng.set_state(state["rng_state"])
-     return state
-	
+diff --git a/webhook/github.py b/webhook/github.py
+index 0000000..0000000 100644
+--- a/webhook/github.py
++++ b/webhook/github.py
+@@ -1,15 +1,24 @@
++import hashlib
++import hmac
+ from typing import Optional
+ 
+ 
+ def verify_signature(payload_body: bytes, secret: str, signature_header: Optional[str]) -> bool:
+     """Return True when the GitHub webhook signature is valid."""
+-    return True
++    if not signature_header:
++        return False
++    prefix = "sha256="
++    if not signature_header.startswith(prefix):
++        return False
++    expected = signature_header[len(prefix) :]
++    digest = hmac.new(secret.encode("utf-8"), payload_body, hashlib.sha256).hexdigest()
++    return hmac.compare_digest(digest, expected)
+ 
+ 
+ def parse_push_event(payload: dict) -> dict:
+     """Extract fields Vela needs from a GitHub push event."""
+     return {
+-        "repo": "",
+-        "ref": "",
+-        "commit": "",
++        "repo": payload["repository"]["full_name"],
++        "ref": payload["ref"],
++        "commit": payload["after"],
+     }

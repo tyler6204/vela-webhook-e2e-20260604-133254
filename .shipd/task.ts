@@ -2,8 +2,8 @@ import { defineTask } from "./.types/shipd";
 
 export default defineTask({
   proposal: {
-    title: "New Submission",
-
+    title: "Testing Submissions",
+    sourceUrl: "https://docs.github.com/en/webhooks/webhook-events-and-payloads#push",
   },
 
   workspace: {
@@ -24,37 +24,72 @@ export default defineTask({
   },
 
   rubric: {
-    label: "Task",
+    label: "GitHub webhook submission handling",
     totalPoints: 10,
     children: [
       {
-        label: "Understands the problem",
+        label: "Understands the webhook gap",
         points: 3,
         children: [
-          { label: "Explains the actual bug or missing feature", points: 2, kind: "qualitative" },
-          { label: "Explains why the chosen approach should work", points: 1, kind: "qualitative" },
+          {
+            label: "Explains that signature verification always passes and push fields are empty",
+            points: 2,
+            kind: "qualitative",
+          },
+          {
+            label: "Explains why HMAC-SHA256 verification with compare_digest restores trust",
+            points: 1,
+            kind: "qualitative",
+          },
         ],
       },
       {
-        label: "Correct implementation",
+        label: "Webhook handler implementation",
         points: 4,
         children: [
-          { label: "Fixes or implements the requested behavior", points: 3, kind: "deterministic" },
-          { label: "Does not break existing public behavior", points: 1, kind: "deterministic" },
+          {
+            label: "verify_signature rejects missing and invalid X-Hub-Signature-256 headers",
+            points: 2,
+            kind: "deterministic",
+          },
+          {
+            label: "parse_push_event returns repo, ref, and commit from a push payload",
+            points: 1,
+            kind: "deterministic",
+          },
+          {
+            label: "Keeps the public function signatures in webhook/github.py unchanged",
+            points: 1,
+            kind: "deterministic",
+          },
         ],
       },
       {
-        label: "Evidence",
+        label: "Verification evidence",
         points: 2,
         children: [
-          { label: "Adds or updates a meaningful test", points: 1, kind: "deterministic" },
-          { label: "Provides required metrics or report output", points: 1, kind: "deterministic" },
+          {
+            label: "tests/test_github_webhook.py covers valid signatures, rejections, and push parsing",
+            points: 1,
+            kind: "deterministic",
+          },
+          {
+            label: "metrics.json includes tests_passed, tests_total, invalid_signature_rejected, and push_fields_extracted",
+            points: 1,
+            kind: "deterministic",
+          },
         ],
       },
       {
-        label: "Communication",
+        label: "Submission report",
         points: 1,
-        children: [{ label: "report.md is concise and reproducible", points: 1, kind: "qualitative" }],
+        children: [
+          {
+            label: "report.md documents setup, the pytest command, and expected webhook behavior",
+            points: 1,
+            kind: "qualitative",
+          },
+        ],
       },
     ],
   },
