@@ -44,7 +44,7 @@ index 0000000..075fd2e
 +- Validates case-insensitive request headers, media type, payload size, and canonical delivery
 +  UUIDs before returning a `DeliveryResult`.
 diff --git a/webhook/github.py b/webhook/github.py
-index 2da2b4f..c0f945c 100644
+index 2da2b4f..64ac0fb 100644
 --- a/webhook/github.py
 +++ b/webhook/github.py
 @@ -3 +3,6 @@
@@ -54,7 +54,7 @@ index 2da2b4f..c0f945c 100644
 +import json
 +import re
 +from fnmatch import fnmatchcase
-+from typing import Iterable, Mapping, Optional, Sequence, Tuple, Union
++from typing import Iterable, Mapping, Optional, Sequence, Union
 @@ -4,0 +10,7 @@ from typing import Mapping, Optional, Union
 +from .errors import (
 +    InvalidSignature,
@@ -81,7 +81,7 @@ index 2da2b4f..c0f945c 100644
 +class _DuplicateKey(ValueError):
 +    pass
 +
-@@ -16 +45,35 @@ def verify_signature(
+@@ -16 +45,38 @@ def verify_signature(
 -    raise NotImplementedError
 +    if signature_header is None:
 +        raise MissingHeader("X-Hub-Signature-256 is required")
@@ -98,7 +98,7 @@ index 2da2b4f..c0f945c 100644
 +    if not isinstance(secrets, Mapping) or not secrets:
 +        raise ValueError("at least one signing secret is required")
 +
-+    matches = []
++    normalized_secrets = []
 +    for key_id, secret in secrets.items():
 +        if not isinstance(key_id, str) or not key_id:
 +            raise ValueError("secret IDs must be non-empty strings")
@@ -110,7 +110,10 @@ index 2da2b4f..c0f945c 100644
 +            raise TypeError("secret values must be str or bytes")
 +        if not secret_bytes:
 +            raise ValueError("signing secrets must not be empty")
++        normalized_secrets.append((key_id, secret_bytes))
 +
++    matches = []
++    for key_id, secret_bytes in normalized_secrets:
 +        expected = hmac.new(secret_bytes, payload_body, hashlib.sha256).hexdigest()
 +        if hmac.compare_digest(expected, provided_digest):
 +            matches.append(key_id)
@@ -118,7 +121,7 @@ index 2da2b4f..c0f945c 100644
 +    if not matches:
 +        raise InvalidSignature("signature does not match any configured secret")
 +    return matches[0]
-@@ -21 +84,33 @@ def decode_payload(payload_body: bytes) -> dict:
+@@ -21 +87,32 @@ def decode_payload(payload_body: bytes) -> dict:
 -    raise NotImplementedError
 +    if not isinstance(payload_body, bytes):
 +        raise TypeError("payload_body must be bytes")
@@ -145,15 +148,14 @@ index 2da2b4f..c0f945c 100644
 +            object_pairs_hook=object_without_duplicates,
 +            parse_constant=reject_constant,
 +        )
-+    except (json.JSONDecodeError, _DuplicateKey, ValueError) as exc:
++    except (json.JSONDecodeError, _DuplicateKey, RecursionError, ValueError) as exc:
 +        raise MalformedPayload("payload is not strict JSON") from exc
 +
 +    if not isinstance(payload, dict):
 +        raise MalformedPayload("payload must be a JSON object")
-+    if _json_depth(payload) > 64:
-+        raise MalformedPayload("payload nesting exceeds 64 levels")
++    _validate_json_depth(payload)
 +    return payload
-@@ -26 +121,13 @@ def normalize_event(event_type: str, payload: dict, delivery_id: str) -> Normali
+@@ -26 +123,13 @@ def normalize_event(event_type: str, payload: dict, delivery_id: str) -> Normali
 -    raise NotImplementedError
 +    if event_type not in _SUPPORTED_EVENTS:
 +        raise UnsupportedEvent(f"unsupported GitHub event: {event_type}")
@@ -168,7 +170,7 @@ index 2da2b4f..c0f945c 100644
 +    if event_type == "pull_request":
 +        return _normalize_pull_request(payload, delivery_id, common)
 +    return _normalize_merge_group(payload, delivery_id, common)
-@@ -31 +138,284 @@ def evaluate_policy(event: NormalizedEvent, policy: TriggerPolicy) -> PolicyDeci
+@@ -31 +140,307 @@ def evaluate_policy(event: NormalizedEvent, policy: TriggerPolicy) -> PolicyDeci
 -    raise NotImplementedError
 +    if event.event not in policy.allowed_events:
 +        return PolicyDecision(False, "event_not_allowed")
@@ -203,19 +205,22 @@ index 2da2b4f..c0f945c 100644
 +    return PolicyDecision(True, "accepted")
 +
 +
-+def _json_depth(value, depth=0):
-+    if isinstance(value, dict):
-+        return max([depth] + [_json_depth(item, depth + 1) for item in value.values()])
-+    if isinstance(value, list):
-+        return max([depth] + [_json_depth(item, depth + 1) for item in value])
-+    return depth
++def _validate_json_depth(value) -> None:
++    stack = [(value, 1)]
++    while stack:
++        current, depth = stack.pop()
++        if not isinstance(current, (dict, list)):
++            continue
++        if depth > 64:
++            raise MalformedPayload("payload nesting exceeds 64 container levels")
++        children = current.values() if isinstance(current, dict) else current
++        stack.extend((child, depth + 1) for child in children)
 +
 +
 +def _common_fields(payload: dict) -> dict:
 +    repository = _expect_dict(payload, "repository")
 +    repository_name = _expect_string(repository, "full_name")
-+    if "/" not in repository_name:
-+        raise MalformedPayload("repository.full_name must be owner/name")
++    _validate_repository_name(repository_name, "repository.full_name")
 +
 +    sender = _expect_dict(payload, "sender")
 +    sender_login = _expect_string(sender, "login")
@@ -281,8 +286,7 @@ index 2da2b4f..c0f945c 100644
 +        if not isinstance(head_commit, dict):
 +            raise MalformedPayload("head_commit must be an object or null")
 +        head_message = _expect_string(head_commit, "message", "head_commit.message")
-+        if head_message not in messages:
-+            messages.insert(0, head_message)
++        messages.insert(0, head_message)
 +        changed_files.update(_commit_files(head_commit, "head_commit"))
 +
 +    return NormalizedEvent(
@@ -328,12 +332,19 @@ index 2da2b4f..c0f945c 100644
 +        "full_name",
 +        "pull_request.head.repo.full_name",
 +    )
++    _validate_repository_name(
++        head_repo_name,
++        "pull_request.head.repo.full_name",
++    )
 +
 +    sha = head_sha
 +    if action == "closed" and merged:
 +        merge_sha = pull_request.get("merge_commit_sha")
-+        if merge_sha is not None:
-+            sha = _validate_sha(merge_sha, "pull_request.merge_commit_sha")
++        if merge_sha is None:
++            raise MalformedPayload(
++                "pull_request.merge_commit_sha is required for a merged pull request"
++            )
++        sha = _validate_sha(merge_sha, "pull_request.merge_commit_sha")
 +
 +    return NormalizedEvent(
 +        event="pull_request",
@@ -433,7 +444,11 @@ index 2da2b4f..c0f945c 100644
 +
 +def _expect_ref(container: dict, key: str, path: Optional[str] = None) -> str:
 +    value = _expect_string(container, key, path)
-+    if not value.startswith("refs/") or any(character.isspace() for character in value):
++    if (
++        not value.startswith("refs/")
++        or len(value) == len("refs/")
++        or any(character.isspace() for character in value)
++    ):
 +        raise MalformedPayload(f"{path or key} must be a canonical refs/ value")
 +    return value
 +
@@ -451,11 +466,21 @@ index 2da2b4f..c0f945c 100644
 +    return any(fnmatchcase(value, pattern) for pattern in patterns)
 +
 +
++def _validate_repository_name(value: str, path: str) -> None:
++    parts = value.split("/")
++    if (
++        len(parts) != 2
++        or not all(parts)
++        or any(character.isspace() for character in value)
++    ):
++        raise MalformedPayload(f"{path} must be exactly owner/name")
++
++
 +def _contains_default_skip_token(messages: Sequence[str]) -> bool:
 +    combined = "\n".join(messages).casefold()
 +    return "[skip ci]" in combined or "[ci skip]" in combined
 diff --git a/webhook/processor.py b/webhook/processor.py
-index e3a04ed..c072ce3 100644
+index e3a04ed..b8741d0 100644
 --- a/webhook/processor.py
 +++ b/webhook/processor.py
 @@ -3 +3,4 @@
@@ -472,10 +497,7 @@ index e3a04ed..c072ce3 100644
 +    UnsupportedMediaType,
 +)
 +from .github import decode_payload, evaluate_policy, normalize_event, verify_signature
-@@ -6 +16 @@ from .models import DeliveryResult, TriggerPolicy
--from .replay import ReplayCache
-+from .replay import ReplayCache, Reservation
-@@ -16 +26,17 @@ class WebhookProcessor:
+@@ -16 +26,25 @@ class WebhookProcessor:
 -        raise NotImplementedError
 +        if not isinstance(secrets, Mapping) or not secrets:
 +            raise ValueError("at least one signing secret is required")
@@ -487,14 +509,22 @@ index e3a04ed..c072ce3 100644
 +            if not secret:
 +                raise ValueError("signing secrets must not be empty")
 +        self._secrets = dict(secrets)
-+        self._policy = policy or TriggerPolicy()
-+        if self._policy.max_payload_bytes <= 0:
-+            raise ValueError("max_payload_bytes must be positive")
-+        self._replay_cache = replay_cache or ReplayCache(
-+            ttl_seconds=self._policy.replay_ttl_seconds,
-+            capacity=self._policy.replay_capacity,
++        self._policy = policy if policy is not None else TriggerPolicy()
++        if (
++            isinstance(self._policy.max_payload_bytes, bool)
++            or not isinstance(self._policy.max_payload_bytes, int)
++            or self._policy.max_payload_bytes <= 0
++        ):
++            raise ValueError("max_payload_bytes must be a positive integer")
++        self._replay_cache = (
++            replay_cache
++            if replay_cache is not None
++            else ReplayCache(
++                ttl_seconds=self._policy.replay_ttl_seconds,
++                capacity=self._policy.replay_capacity,
++            )
 +        )
-@@ -19 +45,95 @@ class WebhookProcessor:
+@@ -19 +53,98 @@ class WebhookProcessor:
 -        raise NotImplementedError
 +        if not isinstance(body, bytes):
 +            raise TypeError("body must be bytes")
@@ -517,7 +547,6 @@ index e3a04ed..c072ce3 100644
 +        )
 +
 +        key_id = verify_signature(body, self._secrets, signature)
-+        payload = decode_payload(body)
 +        fingerprint = hashlib.sha256(
 +            event_type.encode("utf-8") + b"\0" + body
 +        ).hexdigest()
@@ -528,6 +557,7 @@ index e3a04ed..c072ce3 100644
 +            return replace(reservation.result, duplicate=True)
 +
 +        try:
++            payload = decode_payload(body)
 +            event = normalize_event(event_type, payload, delivery_id)
 +            decision = evaluate_policy(event, self._policy)
 +            result = DeliveryResult(
@@ -570,7 +600,10 @@ index e3a04ed..c072ce3 100644
 +        parts = [part.strip() for part in value.split(";")]
 +        if not parts or parts[0].casefold() != "application/json":
 +            raise UnsupportedMediaType("Content-Type must be application/json")
-+        for parameter in parts[1:]:
++        parameters = parts[1:]
++        if len(parameters) > 1:
++            raise UnsupportedMediaType("only one charset parameter is supported")
++        for parameter in parameters:
 +            if "=" not in parameter:
 +                raise UnsupportedMediaType("malformed Content-Type parameter")
 +            name, parameter_value = (
@@ -592,18 +625,19 @@ index e3a04ed..c072ce3 100644
 +            )
 +        return canonical
 diff --git a/webhook/replay.py b/webhook/replay.py
-index edf15a5..dc4d103 100644
+index edf15a5..146d59a 100644
 --- a/webhook/replay.py
 +++ b/webhook/replay.py
-@@ -2,0 +3,2 @@
+@@ -2,0 +3,3 @@
++import math
 +import threading
 +import time
-@@ -4 +6,3 @@ from dataclasses import dataclass
+@@ -4 +7,3 @@ from dataclasses import dataclass
 -from typing import Callable, Optional
 +from typing import Callable, Dict, Optional
 +
 +from .errors import DeliveryInProgress, ReplayCapacityExceeded, ReplayConflict
-@@ -15,0 +20,10 @@ class Reservation:
+@@ -15,0 +21,10 @@ class Reservation:
 +@dataclass
 +class _Entry:
 +    fingerprint: str
@@ -614,12 +648,19 @@ index edf15a5..dc4d103 100644
 +    result: object = None
 +
 +
-@@ -25 +39,12 @@ class ReplayCache:
+@@ -25 +40,19 @@ class ReplayCache:
 -        raise NotImplementedError
-+        if ttl_seconds <= 0:
-+            raise ValueError("ttl_seconds must be positive")
++        if (
++            isinstance(ttl_seconds, bool)
++            or not isinstance(ttl_seconds, (int, float))
++            or not math.isfinite(ttl_seconds)
++            or ttl_seconds <= 0
++        ):
++            raise ValueError("ttl_seconds must be a positive finite number")
 +        if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity <= 0:
 +            raise ValueError("capacity must be a positive integer")
++        if clock is not None and not callable(clock):
++            raise TypeError("clock must be callable")
 +
 +        self._ttl_seconds = float(ttl_seconds)
 +        self._capacity = capacity
@@ -628,7 +669,7 @@ index edf15a5..dc4d103 100644
 +        self._next_token = 1
 +        self._next_sequence = 1
 +        self._lock = threading.Lock()
-@@ -28 +53,39 @@ class ReplayCache:
+@@ -28 +61,39 @@ class ReplayCache:
 -        raise NotImplementedError
 +        if not isinstance(delivery_id, str) or not delivery_id:
 +            raise ValueError("delivery_id must be a non-empty string")
@@ -636,7 +677,7 @@ index edf15a5..dc4d103 100644
 +            raise ValueError("fingerprint must be a non-empty string")
 +
 +        with self._lock:
-+            now = self._clock()
++            now = self._now()
 +            self._prune_expired(now)
 +            existing = self._entries.get(delivery_id)
 +            if existing is not None:
@@ -669,12 +710,12 @@ index edf15a5..dc4d103 100644
 +                token=token,
 +                duplicate=False,
 +            )
-@@ -31 +94,11 @@ class ReplayCache:
+@@ -31 +102,11 @@ class ReplayCache:
 -        raise NotImplementedError
 +        if reservation.duplicate or reservation.token is None:
 +            raise ValueError("a duplicate reservation cannot be committed")
 +        with self._lock:
-+            now = self._clock()
++            now = self._now()
 +            self._prune_expired(now)
 +            entry = self._entries.get(reservation.delivery_id)
 +            if not self._is_current(entry, reservation):
@@ -682,20 +723,30 @@ index edf15a5..dc4d103 100644
 +            entry.committed = True
 +            entry.result = result
 +            entry.expires_at = now + self._ttl_seconds
-@@ -34 +107,7 @@ class ReplayCache:
+@@ -34 +115,7 @@ class ReplayCache:
 -        raise NotImplementedError
 +        if reservation.duplicate or reservation.token is None:
 +            return
 +        with self._lock:
-+            self._prune_expired(self._clock())
++            self._prune_expired(self._now())
 +            entry = self._entries.get(reservation.delivery_id)
 +            if self._is_current(entry, reservation) and not entry.committed:
 +                del self._entries[reservation.delivery_id]
-@@ -37 +116,32 @@ class ReplayCache:
+@@ -37 +124,42 @@ class ReplayCache:
 -        raise NotImplementedError
 +        with self._lock:
-+            self._prune_expired(self._clock())
++            self._prune_expired(self._now())
 +            return len(self._entries)
++
++    def _now(self) -> float:
++        value = self._clock()
++        if (
++            isinstance(value, bool)
++            or not isinstance(value, (int, float))
++            or not math.isfinite(value)
++        ):
++            raise ValueError("clock must return a finite number")
++        return float(value)
 +
 +    def _is_current(self, entry: Optional[_Entry], reservation: Reservation) -> bool:
 +        return (

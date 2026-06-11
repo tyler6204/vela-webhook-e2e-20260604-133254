@@ -47,7 +47,8 @@ invalid SHAs raise `MalformedPayload`.
 Common rules:
 
 - `repository.full_name` and `sender.login` are required non-empty strings.
-- `repository.full_name` must have `owner/name` form.
+- Repository full names must contain exactly one `/`, with non-empty owner and repository
+  components and no whitespace.
 - `installation` may be absent or null. When present, `installation.id` is a positive integer;
   booleans are not integers.
 - Git object IDs are exactly 40 lowercase hexadecimal characters.
@@ -64,8 +65,10 @@ Require `ref`, `before`, `after`, `created`, `deleted`, and `forced`.
 - `commits` defaults to an empty array. Each entry requires `id` and `message`.
 - `added`, `modified`, and `removed` default to empty arrays on commits and `head_commit`.
   Validate every filename as a non-empty string.
-- Normalize commit IDs in input order, messages in deterministic order, and changed files as a
-  sorted de-duplicated tuple. Include `head_commit` files and message when present.
+- Normalize commit IDs in input order. Normalize messages as the `head_commit` message first
+  when present, followed by every commit message in input order without de-duplicating equal
+  strings. Normalize changed files as a sorted de-duplicated tuple, including `head_commit`
+  files.
 - Set `skip_ci` when a normalized message contains `[skip ci]` or `[ci skip]`,
   case-insensitively.
 
@@ -77,8 +80,8 @@ Support actions `opened`, `reopened`, `synchronize`, `ready_for_review`, and `cl
   and `head.repo.full_name`.
 - Branch names are not full refs, do not start or end with `/`, and contain no whitespace.
 - Normalize `ref` as `refs/pull/<number>/head` and `base_ref` as `refs/heads/<base branch>`.
-- Use the head SHA normally. For a closed merged pull request, use a non-null
-  `merge_commit_sha`.
+- Use the head SHA normally. For a closed merged pull request, require a non-null valid
+  `merge_commit_sha` and use it as the normalized SHA.
 - Set `fork` by comparing the head repository full name to the delivery repository
   case-insensitively.
 
@@ -111,7 +114,9 @@ Otherwise return `PolicyDecision(True, "accepted")`.
 
 Implement `ReplayCache` as a thread-safe, bounded reservation cache:
 
-- `ttl_seconds` and `capacity` must be positive. Use the injected clock or `time.monotonic`.
+- `ttl_seconds` must be a positive finite non-boolean number and `capacity` must be a positive
+  non-boolean integer. Use the injected callable clock or `time.monotonic`; clock results must
+  also be finite non-boolean numbers.
 - `reserve(delivery_id, fingerprint)` atomically creates an in-progress reservation.
 - Reserving the same ID and fingerprint while in progress raises `DeliveryInProgress`.
 - Reserving the same ID with a different fingerprint raises `ReplayConflict`, whether the
@@ -138,15 +143,16 @@ Implement `WebhookProcessor`:
   ambiguous and raise `MalformedHeaders`. Header names and values must be strings.
 - Require non-empty `Content-Type`, `X-GitHub-Event`, `X-GitHub-Delivery`, and
   `X-Hub-Signature-256`.
-- Accept `application/json` case-insensitively with no parameter or only
+- Accept `application/json` case-insensitively with no parameter or exactly one
   `charset=utf-8` (quoted or unquoted, case-insensitive). Reject all other media types and
-  parameters with `UnsupportedMediaType`.
+  parameter counts or values with `UnsupportedMediaType`.
 - Require `X-GitHub-Delivery` to be the canonical lowercase string form of a UUID.
 - Verify the signature over the exact body before JSON decoding.
-- Fingerprint the event name plus the raw body so changing either conflicts under a completed
-  delivery ID.
-- Reserve before event normalization. Abort the reservation on normalization, policy, or result
-  construction failure so a corrected delivery can retry.
+- Fingerprint the event name plus the raw body and reserve immediately after authentication,
+  before JSON decoding. This ensures any authenticated change to the event or body conflicts
+  under an existing delivery ID.
+- Abort the reservation on decoding, normalization, policy, or result construction failure so
+  a corrected delivery can retry.
 - Cache both accepted and policy-rejected results.
 - For an exact committed duplicate, return the cached `DeliveryResult` with only
   `duplicate=True` changed.

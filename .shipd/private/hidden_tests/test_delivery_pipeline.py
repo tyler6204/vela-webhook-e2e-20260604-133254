@@ -118,6 +118,35 @@ def test_strict_json_rejects_excessive_nesting():
         decode_payload(body)
 
 
+def test_strict_json_accepts_64_container_levels_and_rejects_65():
+    allowed_value = 0
+    for _ in range(63):
+        allowed_value = [allowed_value]
+    rejected_value = [allowed_value]
+    allowed = encode({"x": allowed_value})
+    rejected = encode({"x": rejected_value})
+    assert isinstance(decode_payload(allowed), dict)
+    with pytest.raises(MalformedPayload):
+        decode_payload(rejected)
+
+
+def test_strict_json_wraps_parser_recursion_errors():
+    body = ("[" * 2000 + "0" + "]" * 2000).encode()
+    with pytest.raises(MalformedPayload):
+        decode_payload(body)
+
+
+@pytest.mark.parametrize(
+    "full_name",
+    ["/repo", "owner/", "owner/repo/extra", "owner /repo", "owner/re po"],
+)
+def test_repository_full_name_requires_exact_owner_name(full_name):
+    payload = load_fixture("push.json")
+    payload["repository"]["full_name"] = full_name
+    with pytest.raises(MalformedPayload):
+        normalize_event("push", payload, DELIVERY_A)
+
+
 def test_push_created_and_deleted_invariants():
     created = load_fixture("push.json")
     created.update({"before": ZERO_SHA, "created": True})
@@ -151,6 +180,15 @@ def test_push_rejects_boolean_integer_confusion_and_bad_commit_files():
         normalize_event("push", payload, DELIVERY_A)
 
 
+def test_push_messages_include_duplicate_head_message_first():
+    payload = load_fixture("push.json")
+    event = normalize_event("push", payload, DELIVERY_A)
+    assert event.messages[:2] == (
+        payload["head_commit"]["message"],
+        payload["commits"][0]["message"],
+    )
+
+
 def test_pull_request_fork_and_merged_sha_are_normalized():
     payload = load_fixture("pull_request.json")
     payload["pull_request"]["head"]["repo"]["full_name"] = "external/fork"
@@ -162,6 +200,15 @@ def test_pull_request_fork_and_merged_sha_are_normalized():
     payload["pull_request"]["merge_commit_sha"] = "a" * 40
     merged_event = normalize_event("pull_request", payload, DELIVERY_A)
     assert merged_event.sha == "a" * 40
+
+
+def test_merged_pull_request_requires_merge_commit_sha():
+    payload = load_fixture("pull_request.json")
+    payload["action"] = "closed"
+    payload["pull_request"]["merged"] = True
+    payload["pull_request"]["merge_commit_sha"] = None
+    with pytest.raises(MalformedPayload):
+        normalize_event("pull_request", payload, DELIVERY_A)
 
 
 @pytest.mark.parametrize(
@@ -253,6 +300,20 @@ def test_replay_expired_reservation_cannot_be_committed_directly():
     assert len(cache) == 0
 
 
+@pytest.mark.parametrize("ttl", [True, float("nan"), float("inf"), "60"])
+def test_replay_ttl_requires_a_finite_number(ttl):
+    with pytest.raises(ValueError):
+        ReplayCache(ttl, 1)
+
+
+def test_replay_validates_injected_clock_and_results():
+    with pytest.raises(TypeError):
+        ReplayCache(60, 1, clock=object())
+    cache = ReplayCache(60, 1, clock=lambda: float("nan"))
+    with pytest.raises(ValueError):
+        cache.reserve(DELIVERY_A, "fingerprint")
+
+
 def test_replay_capacity_evicts_oldest_committed_entry():
     cache = ReplayCache(60, 2, clock=lambda: 10.0)
     first = cache.reserve(DELIVERY_A, "a")
@@ -308,6 +369,14 @@ def test_processor_accepts_case_insensitive_headers_and_quoted_utf8():
     assert result.event.event == "push"
 
 
+def test_processor_uses_an_injected_empty_replay_cache():
+    cache = ReplayCache(60, 10)
+    processor = WebhookProcessor(SECRETS, replay_cache=cache)
+    body = encode(load_fixture("push.json"))
+    processor.process(request_headers("push", body), body)
+    assert len(cache) == 1
+
+
 @pytest.mark.parametrize(
     "secrets",
     [
@@ -336,6 +405,7 @@ def test_processor_rejects_case_colliding_headers():
         "application/json; charset=latin-1",
         "application/json; boundary=something",
         "application/json; charset",
+        "application/json; charset=utf-8; charset=utf-8",
     ],
 )
 def test_processor_rejects_unsupported_content_types(content_type):
@@ -366,6 +436,27 @@ def test_processor_authenticates_before_decoding_json():
     headers["x-hub-signature-256"] = "sha256=" + ("0" * 64)
     with pytest.raises(InvalidSignature):
         WebhookProcessor(SECRETS).process(headers, body)
+
+
+def test_processor_checks_completed_conflict_before_decoding_changed_body():
+    processor = WebhookProcessor(SECRETS)
+    valid_body = encode(load_fixture("push.json"))
+    processor.process(request_headers("push", valid_body), valid_body)
+
+    malformed_body = b"{not-json"
+    with pytest.raises(ReplayConflict):
+        processor.process(request_headers("push", malformed_body), malformed_body)
+
+
+def test_processor_aborts_failed_decoding_for_retry():
+    processor = WebhookProcessor(SECRETS)
+    malformed_body = b"{not-json"
+    with pytest.raises(MalformedPayload):
+        processor.process(request_headers("push", malformed_body), malformed_body)
+
+    valid_body = encode(load_fixture("push.json"))
+    result = processor.process(request_headers("push", valid_body), valid_body)
+    assert result.decision.accepted
 
 
 def test_processor_aborts_failed_normalization_for_retry():

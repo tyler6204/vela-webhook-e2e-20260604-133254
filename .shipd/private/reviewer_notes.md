@@ -21,7 +21,7 @@ The task requires several interacting invariants:
   behave correctly.
 
 The expected frontier pass rate is below 10%. A plausible implementation must span multiple
-modules and pass 58 public/private tests, including concurrency and monkeypatched
+modules and pass 76 public/private tests, including concurrency and monkeypatched
 constant-comparison checks. This is not solvable by copying a short GitHub HMAC example.
 
 ## Public contract
