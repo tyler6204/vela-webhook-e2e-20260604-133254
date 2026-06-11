@@ -22,6 +22,14 @@ Edit these files, commit them, then run setup checks against a branch, tag, or f
 Re-running the installer keeps authored task files and refreshes only generated
 support files such as this README and `.shipd/.types/shipd.d.ts`.
 
+## Prometheus submission metadata
+
+The challenge family, source type, expected skill, and expected horizon are selected
+in the Prometheus submission's Info step. They are not fields in `.shipd/task.ts`.
+Task quality compares the repository task with that approved submission metadata.
+Reinstalling the scaffold does not change the selected challenge family. Update
+those fields in Prometheus while the submission is outside active review or checks.
+
 ## Path and privacy rules
 
 - Use repository-relative paths with `/`. Do not use absolute paths, Windows drive paths, NUL bytes, or `..` segments.

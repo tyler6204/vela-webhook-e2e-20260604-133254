@@ -1,5 +1,5 @@
 /**
- * AUTO-GENERATED SHIPD EDITOR TYPES. DO NOT EDIT.
+ * AUTO-GENERATED PROMETHEUS EDITOR TYPES. DO NOT EDIT.
  *
  * Edit .shipd/task.ts, .shipd/prompt.md, and .shipd/private/reviewer_notes.md instead.
  * Reinstalling or refreshing the .shipd scaffold can overwrite this file.
@@ -36,6 +36,16 @@ export type Task = {
 export type TaskProposal = {
   /** Clear task title. Replace bracketed starter text before running checks. */
   title: string;
+
+  /** Prometheus challenge family. Setup refresh syncs this value to the submission. */
+  family:
+    | "paper_implementation"
+    | "training_debugger"
+    | "inference_optimizer"
+    | "grader_forensics"
+    | "dataset_forensics"
+    | "synthetic_data"
+    | "other_research_engineering";
 
   /** Optional paper, issue, or design document URL. Leave it out when there is no source. */
   sourceUrl?: string;

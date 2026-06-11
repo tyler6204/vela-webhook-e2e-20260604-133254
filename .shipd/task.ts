@@ -1,8 +1,9 @@
-import { defineTask } from "./.types/shipd";
+import { defineTask } from "./.types/prometheus";
 
 export default defineTask({
   proposal: {
     title: "GitHub Webhook Signature Verification for Vela",
+    family: "other_research_engineering",
     sourceUrl: "https://docs.github.com/en/webhooks/webhook-events-and-payloads#push",
   },
 
