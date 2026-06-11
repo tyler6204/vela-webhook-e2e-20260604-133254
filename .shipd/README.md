@@ -19,15 +19,18 @@ Edit these files, commit them, then run setup checks against a branch, tag, or f
 - `.shipd/private/reviewer_notes.md` - reviewer notes.
 - `.shipd/.types/prometheus.d.ts` - generated local editor types. Re-run the installer to refresh it.
 
+Choose one reviewed `execution.profile` in `.shipd/task.ts`. Use
+`cpu_standard` unless the task genuinely needs high memory or a single GPU.
+
 Re-running the installer keeps authored task files and refreshes only generated
 support files such as this README and `.shipd/.types/prometheus.d.ts`.
 
 ## Prometheus submission metadata
 
 The `proposal` object in `.shipd/task.ts` is authoritative after the
-repository is connected. It contains the title, challenge family, source type,
-optional source URL, idea, expected skill, and expected horizon. Commit changes,
-then refresh setup checks to sync them into Prometheus.
+repository is connected. It contains the title, challenge category, source type,
+optional source URL, and idea. Commit changes, then refresh setup checks to sync
+them into Prometheus.
 
 Repository URL and branch or tag remain setup inputs because Prometheus needs
 them before it can read `.shipd/task.ts`. Re-running the installer preserves
@@ -68,7 +71,8 @@ Verifier checks execute the pinned commit once in a sandbox:
 A pinned commit can enter verifier execution only once. To run verifier checks
 again, push or select a new commit and run setup checks to pin that new SHA.
 
-Setup may use network access to install dependencies. Do not rely on verifier network isolation.
+Setup may use network access to install dependencies. The prepared verifier and
+agent runtimes run with network disabled.
 
 ## Before you commit
 

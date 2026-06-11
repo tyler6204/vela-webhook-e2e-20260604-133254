@@ -14,6 +14,9 @@ export type Task = {
   /** Repository-relative workspace settings. */
   workspace: WorkspaceConfig;
 
+  /** Reviewed Prometheus execution policy. */
+  execution: ExecutionConfig;
+
   /** Markdown file the solver reads first. */
   prompt: string;
 
@@ -37,8 +40,8 @@ export type TaskProposal = {
   /** Clear task title. Replace bracketed starter text before running checks. */
   title: string;
 
-  /** Prometheus challenge family. Setup refresh syncs this value to the submission. */
-  family:
+  /** Prometheus challenge category. Setup refresh syncs this value to the submission. */
+  category:
     | "paper_implementation"
     | "training_debugger"
     | "inference_optimizer"
@@ -62,22 +65,16 @@ export type TaskProposal = {
   /** The complete submission idea: problem, motivation, and intended outcome. */
   idea: string;
 
-  /** Expected solver experience. */
-  expectedSkill: "intermediate" | "senior" | "staff" | "specialist";
-
-  /** Expected time for a qualified solver. */
-  expectedHorizon:
-    | "two_hours"
-    | "four_hours"
-    | "eight_hours"
-    | "one_day"
-    | "two_days"
-    | "forty_hours";
 };
 
 export type WorkspaceConfig = {
   /** Repository-relative workspace root. Use "." when the repo root is the task root. */
   root: ".";
+};
+
+export type ExecutionConfig = {
+  /** Reviewed CPU or single-GPU resource profile. */
+  profile: "cpu_standard" | "cpu_high_memory" | "gpu_24gb" | "gpu_80gb";
 };
 
 export type ReviewConfig = {

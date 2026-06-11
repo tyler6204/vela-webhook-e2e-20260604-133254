@@ -3,17 +3,19 @@ import { defineTask } from "./.types/prometheus";
 export default defineTask({
   proposal: {
     title: "Production-Grade GitHub Webhook Delivery Pipeline for Vela",
-    family: "other_research_engineering",
+    category: "other_research_engineering",
     sourceType: "production_spec",
     sourceUrl: "https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries",
     idea:
-      "Implement a secure, deterministic GitHub webhook delivery pipeline for Vela with rotating-secret HMAC authentication, strict JSON parsing, multi-event normalization, policy evaluation, and bounded thread-safe replay protection.",
-    expectedSkill: "staff",
-    expectedHorizon: "one_day",
+      "Implement a secure, deterministic GitHub webhook delivery pipeline for Vela with rotating-secret HMAC authentication, strict JSON parsing, multi-event normalization, policy evaluation, and bounded thread-safe replay protection."
   },
 
   workspace: {
     root: ".",
+  },
+
+  execution: {
+    profile: "cpu_standard",
   },
 
   prompt: ".shipd/prompt.md",
