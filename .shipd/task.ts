@@ -4,7 +4,12 @@ export default defineTask({
   proposal: {
     title: "GitHub Webhook Signature Verification for Vela",
     family: "other_research_engineering",
+    sourceType: "public_repo",
     sourceUrl: "https://docs.github.com/en/webhooks/webhook-events-and-payloads#push",
+    idea:
+      "Implement trustworthy GitHub webhook handling for Vela by verifying HMAC SHA-256 signatures and parsing the repository, ref, and commit from push payloads.",
+    expectedSkill: "senior",
+    expectedHorizon: "eight_hours",
   },
 
   workspace: {

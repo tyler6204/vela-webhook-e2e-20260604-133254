@@ -17,18 +17,21 @@ Edit these files, commit them, then run setup checks against a branch, tag, or f
 - `.shipd/private/reference.patch` - reviewer-only reference solution.
 - `.shipd/private/hidden_tests/verifier.py` - reviewer-only verifier.
 - `.shipd/private/reviewer_notes.md` - reviewer notes.
-- `.shipd/.types/shipd.d.ts` - generated local editor types. Re-run the installer to refresh it.
+- `.shipd/.types/prometheus.d.ts` - generated local editor types. Re-run the installer to refresh it.
 
 Re-running the installer keeps authored task files and refreshes only generated
-support files such as this README and `.shipd/.types/shipd.d.ts`.
+support files such as this README and `.shipd/.types/prometheus.d.ts`.
 
 ## Prometheus submission metadata
 
-The challenge family, source type, expected skill, and expected horizon are selected
-in the Prometheus submission's Info step. They are not fields in `.shipd/task.ts`.
-Task quality compares the repository task with that approved submission metadata.
-Reinstalling the scaffold does not change the selected challenge family. Update
-those fields in Prometheus while the submission is outside active review or checks.
+The `proposal` object in `.shipd/task.ts` is authoritative after the
+repository is connected. It contains the title, challenge family, source type,
+optional source URL, idea, expected skill, and expected horizon. Commit changes,
+then refresh setup checks to sync them into Prometheus.
+
+Repository URL and branch or tag remain setup inputs because Prometheus needs
+them before it can read `.shipd/task.ts`. Re-running the installer preserves
+the authored manifest.
 
 ## Path and privacy rules
 
@@ -47,9 +50,9 @@ those fields in Prometheus while the submission is outside active review or chec
 
 ## What the checks do
 
-Setup checks are static. They resolve the Git ref to one commit, parse `.shipd/task.ts` without executing it,
-validate paths and boundaries, inspect the patch, and hash every declared prompt, setup, verifier, notes, and
-reference input.
+Setup begins with static checks. They resolve the Git ref to one commit, parse `.shipd/task.ts` without
+executing it, validate paths and boundaries, inspect the patch, and hash every declared prompt, setup, verifier,
+notes, and reference input. Prometheus then runs task-quality and task-difficulty reviews before verifier checks.
 
 Verifier checks execute the pinned commit once in a sandbox:
 

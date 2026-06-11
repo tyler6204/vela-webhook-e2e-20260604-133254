@@ -47,8 +47,32 @@ export type TaskProposal = {
     | "synthetic_data"
     | "other_research_engineering";
 
+  /** Primary source category used by idea and task-quality review. */
+  sourceType:
+    | "paper"
+    | "public_repo"
+    | "production_spec"
+    | "private_project"
+    | "internal_style_spec"
+    | "other";
+
   /** Optional paper, issue, or design document URL. Leave it out when there is no source. */
   sourceUrl?: string;
+
+  /** The complete submission idea: problem, motivation, and intended outcome. */
+  idea: string;
+
+  /** Expected solver experience. */
+  expectedSkill: "intermediate" | "senior" | "staff" | "specialist";
+
+  /** Expected time for a qualified solver. */
+  expectedHorizon:
+    | "two_hours"
+    | "four_hours"
+    | "eight_hours"
+    | "one_day"
+    | "two_days"
+    | "forty_hours";
 };
 
 export type WorkspaceConfig = {
