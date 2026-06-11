@@ -4,13 +4,17 @@
 import json
 import subprocess
 from pathlib import Path
+from typing import Optional
 
 METRICS_PATH = Path("metrics.json")
 REPORT_PATH = Path("report.md")
 
 
-def fail(message: str) -> None:
-    print(json.dumps({"ok": False, "error": message}))
+def fail(message: str, checks: Optional[dict] = None) -> None:
+    payload = {"ok": False, "score": 0, "error": message}
+    if checks is not None:
+        payload["checks"] = checks
+    print(json.dumps(payload))
     raise SystemExit(1)
 
 
@@ -57,7 +61,7 @@ pytest_result = subprocess.run(
 checks["pytest_passes"] = pytest_result.returncode == 0
 
 if not all(checks.values()):
-    payload = {"ok": False, "checks": checks}
+    payload = {"ok": False, "score": 0, "checks": checks}
     if pytest_result.stdout:
         payload["pytest_stdout"] = pytest_result.stdout[-2000:]
     if pytest_result.stderr:
@@ -65,4 +69,4 @@ if not all(checks.values()):
     print(json.dumps(payload))
     raise SystemExit(1)
 
-print(json.dumps({"ok": True, "checks": checks}))
+print(json.dumps({"ok": True, "score": 1, "checks": checks}))

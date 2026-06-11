@@ -2,6 +2,31 @@
 
 This file is private. Solvers should not see it.
 
+## Task family
+
+This task belongs to **SWE / CI integration / webhook handling**, not training debugging.
+
+The solver fixes GitHub webhook signature verification and push-event parsing for a Vela build
+trigger. There is no model training, checkpointing, optimizer state, or loss-curve analysis.
+
+## Originality
+
+This task was authored for the disposable `vela-webhook-e2e-20260604-133254` repository. It is
+not a relabeled checkpoint-resume or training-debugging problem.
+
+What makes it distinct:
+
+- The broken code is a webhook handler (`webhook/github.py`), not training infrastructure.
+- The fix requires HMAC-SHA256 verification of `X-Hub-Signature-256` plus extraction of Vela
+  trigger fields (`repo`, `ref`, `commit`) from a push payload.
+- Verification is local and fixture-driven (`tests/fixtures/push.json`), with no GitHub network
+  calls.
+- Required solver outputs are webhook-specific metrics (`invalid_signature_rejected`,
+  `push_fields_extracted`), not training-loss deltas.
+
+No prior related submission in this repository reuses the same prompt, patch target, verifier
+checks, or rubric wording.
+
 ## Expected solution
 
 `verify_signature` in `webhook/github.py` should:

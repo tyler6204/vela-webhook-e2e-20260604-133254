@@ -1,4 +1,5 @@
-This repository is meant to validate GitHub webhook payloads for Vela, but the handler in
+Implement GitHub webhook handling for a CI integration service. This repository is meant to
+validate GitHub webhook payloads for Vela, but the handler in
 `webhook/github.py` does not yet meet that bar. Signature verification always succeeds, and
 `parse_push_event` returns empty fields instead of the repository, ref, and commit Vela needs
 to trigger builds.
