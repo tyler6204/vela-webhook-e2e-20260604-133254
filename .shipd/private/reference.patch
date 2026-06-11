@@ -1,33 +1,727 @@
+diff --git a/metrics.json b/metrics.json
+new file mode 100644
+index 0000000..f9ad8d4
+--- /dev/null
++++ b/metrics.json
+@@ -0,0 +1,9 @@
++{
++  "tests_passed": 20,
++  "tests_total": 20,
++  "signature_rotation_verified": true,
++  "strict_json_verified": true,
++  "event_normalization_verified": true,
++  "replay_protection_verified": true,
++  "policy_verified": true
++}
+diff --git a/report.md b/report.md
+new file mode 100644
+index 0000000..075fd2e
+--- /dev/null
++++ b/report.md
+@@ -0,0 +1,24 @@
++# GitHub webhook delivery processing
++
++## Setup and test command
++
++```bash
++bash .shipd/public/setup.sh
++. .venv/bin/activate
++python -m pytest tests/test_github_webhook.py -q
++```
++
++Expected result: all 20 public tests pass without network access.
++
++## Implemented behavior
++
++- Verifies the exact raw webhook body against every configured rotating secret using canonical
++  `X-Hub-Signature-256` HMAC-SHA256 values and constant-time digest comparison.
++- Decodes strict UTF-8 JSON while rejecting duplicate keys, non-finite numbers, non-object
++  payloads, invalid schemas, and excessive nesting.
++- Normalizes `push`, `pull_request`, and `merge_group` deliveries into the stable CI event model.
++- Applies repository, ref, sender, fork, draft, deletion, merge-queue, and skip-CI policy rules.
++- Uses an atomic bounded replay cache with in-progress, committed duplicate, conflict, abort,
++  expiry, and deterministic eviction behavior.
++- Validates case-insensitive request headers, media type, payload size, and canonical delivery
++  UUIDs before returning a `DeliveryResult`.
 diff --git a/webhook/github.py b/webhook/github.py
-index 0000000..0000000 100644
+index 2da2b4f..c0f945c 100644
 --- a/webhook/github.py
 +++ b/webhook/github.py
-@@ -1,15 +1,24 @@
+@@ -3 +3,6 @@
+-from typing import Mapping, Optional, Union
 +import hashlib
 +import hmac
- from typing import Optional
- 
- 
- def verify_signature(payload_body: bytes, secret: str, signature_header: Optional[str]) -> bool:
-     """Return True when the GitHub webhook signature is valid."""
--    return True
-+    if not signature_header:
-+        return False
-+    prefix = "sha256="
-+    if not signature_header.startswith(prefix):
-+        return False
-+    expected = signature_header[len(prefix) :]
-+    digest = hmac.new(secret.encode("utf-8"), payload_body, hashlib.sha256).hexdigest()
-+    return hmac.compare_digest(digest, expected)
- 
- 
- def parse_push_event(payload: dict) -> dict:
-     """Extract fields Vela needs from a GitHub push event."""
-     return {
--        "repo": "",
--        "ref": "",
--        "commit": "",
-+        "repo": payload["repository"]["full_name"],
-+        "ref": payload["ref"],
-+        "commit": payload["after"],
-     }
++import json
++import re
++from fnmatch import fnmatchcase
++from typing import Iterable, Mapping, Optional, Sequence, Tuple, Union
+@@ -4,0 +10,7 @@ from typing import Mapping, Optional, Union
++from .errors import (
++    InvalidSignature,
++    MalformedPayload,
++    MalformedSignature,
++    MissingHeader,
++    UnsupportedEvent,
++)
+@@ -8,0 +21,17 @@ SecretValue = Union[str, bytes]
++_SIGNATURE_RE = re.compile(r"sha256=([0-9a-f]{64})")
++_SHA_RE = re.compile(r"[0-9a-f]{40}")
++_SUPPORTED_EVENTS = {"push", "pull_request", "merge_group"}
++_PULL_REQUEST_ACTIONS = {
++    "opened",
++    "reopened",
++    "synchronize",
++    "ready_for_review",
++    "closed",
++}
++_MERGE_GROUP_ACTIONS = {"checks_requested", "destroyed"}
++_ZERO_SHA = "0" * 40
++
++
++class _DuplicateKey(ValueError):
++    pass
++
+@@ -16 +45,35 @@ def verify_signature(
+-    raise NotImplementedError
++    if signature_header is None:
++        raise MissingHeader("X-Hub-Signature-256 is required")
++    if not isinstance(signature_header, str):
++        raise MalformedSignature("signature header must be text")
++
++    match = _SIGNATURE_RE.fullmatch(signature_header)
++    if match is None:
++        raise MalformedSignature("signature must be sha256=<64 lowercase hex characters>")
++    provided_digest = match.group(1)
++
++    if not isinstance(payload_body, bytes):
++        raise TypeError("payload_body must be bytes")
++    if not isinstance(secrets, Mapping) or not secrets:
++        raise ValueError("at least one signing secret is required")
++
++    matches = []
++    for key_id, secret in secrets.items():
++        if not isinstance(key_id, str) or not key_id:
++            raise ValueError("secret IDs must be non-empty strings")
++        if isinstance(secret, str):
++            secret_bytes = secret.encode("utf-8")
++        elif isinstance(secret, bytes):
++            secret_bytes = secret
++        else:
++            raise TypeError("secret values must be str or bytes")
++        if not secret_bytes:
++            raise ValueError("signing secrets must not be empty")
++
++        expected = hmac.new(secret_bytes, payload_body, hashlib.sha256).hexdigest()
++        if hmac.compare_digest(expected, provided_digest):
++            matches.append(key_id)
++
++    if not matches:
++        raise InvalidSignature("signature does not match any configured secret")
++    return matches[0]
+@@ -21 +84,33 @@ def decode_payload(payload_body: bytes) -> dict:
+-    raise NotImplementedError
++    if not isinstance(payload_body, bytes):
++        raise TypeError("payload_body must be bytes")
++
++    try:
++        text = payload_body.decode("utf-8")
++    except UnicodeDecodeError as exc:
++        raise MalformedPayload("payload is not valid UTF-8") from exc
++
++    def object_without_duplicates(pairs):
++        result = {}
++        for key, value in pairs:
++            if key in result:
++                raise _DuplicateKey(key)
++            result[key] = value
++        return result
++
++    def reject_constant(value):
++        raise ValueError(f"non-finite number {value}")
++
++    try:
++        payload = json.loads(
++            text,
++            object_pairs_hook=object_without_duplicates,
++            parse_constant=reject_constant,
++        )
++    except (json.JSONDecodeError, _DuplicateKey, ValueError) as exc:
++        raise MalformedPayload("payload is not strict JSON") from exc
++
++    if not isinstance(payload, dict):
++        raise MalformedPayload("payload must be a JSON object")
++    if _json_depth(payload) > 64:
++        raise MalformedPayload("payload nesting exceeds 64 levels")
++    return payload
+@@ -26 +121,13 @@ def normalize_event(event_type: str, payload: dict, delivery_id: str) -> Normali
+-    raise NotImplementedError
++    if event_type not in _SUPPORTED_EVENTS:
++        raise UnsupportedEvent(f"unsupported GitHub event: {event_type}")
++    if not isinstance(payload, dict):
++        raise MalformedPayload("payload must be an object")
++    if not isinstance(delivery_id, str) or not delivery_id:
++        raise MalformedPayload("delivery_id must be a non-empty string")
++
++    common = _common_fields(payload)
++    if event_type == "push":
++        return _normalize_push(payload, delivery_id, common)
++    if event_type == "pull_request":
++        return _normalize_pull_request(payload, delivery_id, common)
++    return _normalize_merge_group(payload, delivery_id, common)
+@@ -31 +138,284 @@ def evaluate_policy(event: NormalizedEvent, policy: TriggerPolicy) -> PolicyDeci
+-    raise NotImplementedError
++    if event.event not in policy.allowed_events:
++        return PolicyDecision(False, "event_not_allowed")
++    if not _matches_any(event.repository, policy.allowed_repositories):
++        return PolicyDecision(False, "repository_not_allowed")
++
++    blocked = {sender.casefold() for sender in policy.blocked_senders}
++    if event.sender.casefold() in blocked:
++        return PolicyDecision(False, "blocked_sender")
++
++    if _matches_any(event.ref, policy.ignored_refs):
++        return PolicyDecision(False, "ignored_ref")
++    if not _matches_any(event.ref, policy.allowed_refs):
++        return PolicyDecision(False, "ref_not_allowed")
++
++    lowered_messages = "\n".join(event.messages).casefold()
++    if any(token.casefold() in lowered_messages for token in policy.skip_ci_tokens):
++        return PolicyDecision(False, "skip_ci")
++
++    if event.event == "push" and event.deleted:
++        return PolicyDecision(False, "deleted_ref")
++    if event.event == "pull_request":
++        if event.action == "closed":
++            return PolicyDecision(False, "pull_request_closed")
++        if event.draft:
++            return PolicyDecision(False, "draft_pull_request")
++        if event.fork and not policy.allow_fork_pull_requests:
++            return PolicyDecision(False, "fork_pull_request")
++    if event.event == "merge_group" and event.action == "destroyed":
++        return PolicyDecision(False, "merge_group_destroyed")
++
++    return PolicyDecision(True, "accepted")
++
++
++def _json_depth(value, depth=0):
++    if isinstance(value, dict):
++        return max([depth] + [_json_depth(item, depth + 1) for item in value.values()])
++    if isinstance(value, list):
++        return max([depth] + [_json_depth(item, depth + 1) for item in value])
++    return depth
++
++
++def _common_fields(payload: dict) -> dict:
++    repository = _expect_dict(payload, "repository")
++    repository_name = _expect_string(repository, "full_name")
++    if "/" not in repository_name:
++        raise MalformedPayload("repository.full_name must be owner/name")
++
++    sender = _expect_dict(payload, "sender")
++    sender_login = _expect_string(sender, "login")
++
++    installation_id = None
++    installation = payload.get("installation")
++    if installation is not None:
++        if not isinstance(installation, dict):
++            raise MalformedPayload("installation must be an object")
++        installation_id = _expect_positive_int(installation, "id")
++
++    return {
++        "repository": repository_name,
++        "sender": sender_login,
++        "installation_id": installation_id,
++    }
++
++
++def _normalize_push(payload: dict, delivery_id: str, common: dict) -> NormalizedEvent:
++    ref = _expect_ref(payload, "ref")
++    before = _expect_sha(payload, "before")
++    after = _expect_sha(payload, "after")
++    created = _expect_bool(payload, "created")
++    deleted = _expect_bool(payload, "deleted")
++    forced = _expect_bool(payload, "forced")
++
++    if created and deleted:
++        raise MalformedPayload("push cannot be both created and deleted")
++    if deleted and after != _ZERO_SHA:
++        raise MalformedPayload("deleted pushes must use the zero after SHA")
++    if created and before != _ZERO_SHA:
++        raise MalformedPayload("created pushes must use the zero before SHA")
++
++    if deleted:
++        action = "deleted"
++        sha = None
++    elif created:
++        action = "created"
++        sha = after
++    elif forced:
++        action = "forced"
++        sha = after
++    else:
++        action = "updated"
++        sha = after
++
++    commits_value = payload.get("commits", [])
++    if not isinstance(commits_value, list):
++        raise MalformedPayload("commits must be an array")
++
++    commit_ids = []
++    messages = []
++    changed_files = set()
++    for index, commit in enumerate(commits_value):
++        if not isinstance(commit, dict):
++            raise MalformedPayload(f"commits[{index}] must be an object")
++        commit_ids.append(_expect_sha(commit, "id", f"commits[{index}].id"))
++        messages.append(_expect_string(commit, "message", f"commits[{index}].message"))
++        changed_files.update(_commit_files(commit, f"commits[{index}]"))
++
++    head_commit = payload.get("head_commit")
++    if head_commit is not None:
++        if not isinstance(head_commit, dict):
++            raise MalformedPayload("head_commit must be an object or null")
++        head_message = _expect_string(head_commit, "message", "head_commit.message")
++        if head_message not in messages:
++            messages.insert(0, head_message)
++        changed_files.update(_commit_files(head_commit, "head_commit"))
++
++    return NormalizedEvent(
++        event="push",
++        delivery_id=delivery_id,
++        repository=common["repository"],
++        action=action,
++        ref=ref,
++        sha=sha,
++        sender=common["sender"],
++        installation_id=common["installation_id"],
++        before=before,
++        commits=tuple(commit_ids),
++        changed_files=tuple(sorted(changed_files)),
++        messages=tuple(messages),
++        forced=forced,
++        deleted=deleted,
++        skip_ci=_contains_default_skip_token(messages),
++    )
++
++
++def _normalize_pull_request(
++    payload: dict,
++    delivery_id: str,
++    common: dict,
++) -> NormalizedEvent:
++    action = _expect_string(payload, "action")
++    if action not in _PULL_REQUEST_ACTIONS:
++        raise UnsupportedEvent(f"unsupported pull_request action: {action}")
++    number = _expect_positive_int(payload, "number")
++    pull_request = _expect_dict(payload, "pull_request")
++    draft = _expect_bool(pull_request, "draft", "pull_request.draft")
++    merged = _expect_bool(pull_request, "merged", "pull_request.merged")
++    head = _expect_dict(pull_request, "head", "pull_request.head")
++    base = _expect_dict(pull_request, "base", "pull_request.base")
++    head_sha = _expect_sha(head, "sha", "pull_request.head.sha")
++    base_sha = _expect_sha(base, "sha", "pull_request.base.sha")
++    head_ref = _expect_branch(head, "ref", "pull_request.head.ref")
++    base_branch = _expect_branch(base, "ref", "pull_request.base.ref")
++    head_repo = _expect_dict(head, "repo", "pull_request.head.repo")
++    head_repo_name = _expect_string(
++        head_repo,
++        "full_name",
++        "pull_request.head.repo.full_name",
++    )
++
++    sha = head_sha
++    if action == "closed" and merged:
++        merge_sha = pull_request.get("merge_commit_sha")
++        if merge_sha is not None:
++            sha = _validate_sha(merge_sha, "pull_request.merge_commit_sha")
++
++    return NormalizedEvent(
++        event="pull_request",
++        delivery_id=delivery_id,
++        repository=common["repository"],
++        action=action,
++        ref=f"refs/pull/{number}/head",
++        sha=sha,
++        sender=common["sender"],
++        installation_id=common["installation_id"],
++        base_ref=f"refs/heads/{base_branch}",
++        base_sha=base_sha,
++        number=number,
++        fork=head_repo_name.casefold() != common["repository"].casefold(),
++        draft=draft,
++    )
++
++
++def _normalize_merge_group(
++    payload: dict,
++    delivery_id: str,
++    common: dict,
++) -> NormalizedEvent:
++    action = _expect_string(payload, "action")
++    if action not in _MERGE_GROUP_ACTIONS:
++        raise UnsupportedEvent(f"unsupported merge_group action: {action}")
++    group = _expect_dict(payload, "merge_group")
++    head_sha = _expect_sha(group, "head_sha", "merge_group.head_sha")
++    head_ref = _expect_ref(group, "head_ref", "merge_group.head_ref")
++    base_sha = _expect_sha(group, "base_sha", "merge_group.base_sha")
++    base_ref = _expect_ref(group, "base_ref", "merge_group.base_ref")
++
++    return NormalizedEvent(
++        event="merge_group",
++        delivery_id=delivery_id,
++        repository=common["repository"],
++        action=action,
++        ref=head_ref,
++        sha=head_sha,
++        sender=common["sender"],
++        installation_id=common["installation_id"],
++        base_ref=base_ref,
++        base_sha=base_sha,
++    )
++
++
++def _commit_files(commit: dict, path: str) -> Iterable[str]:
++    files = []
++    for key in ("added", "modified", "removed"):
++        value = commit.get(key, [])
++        if not isinstance(value, list):
++            raise MalformedPayload(f"{path}.{key} must be an array")
++        for index, filename in enumerate(value):
++            if not isinstance(filename, str) or not filename:
++                raise MalformedPayload(f"{path}.{key}[{index}] must be a non-empty string")
++            files.append(filename)
++    return files
++
++
++def _expect_dict(container: dict, key: str, path: Optional[str] = None) -> dict:
++    value = container.get(key)
++    if not isinstance(value, dict):
++        raise MalformedPayload(f"{path or key} must be an object")
++    return value
++
++
++def _expect_string(container: dict, key: str, path: Optional[str] = None) -> str:
++    value = container.get(key)
++    if not isinstance(value, str) or not value:
++        raise MalformedPayload(f"{path or key} must be a non-empty string")
++    return value
++
++
++def _expect_bool(container: dict, key: str, path: Optional[str] = None) -> bool:
++    value = container.get(key)
++    if not isinstance(value, bool):
++        raise MalformedPayload(f"{path or key} must be a boolean")
++    return value
++
++
++def _expect_positive_int(container: dict, key: str, path: Optional[str] = None) -> int:
++    value = container.get(key)
++    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
++        raise MalformedPayload(f"{path or key} must be a positive integer")
++    return value
++
++
++def _expect_sha(container: dict, key: str, path: Optional[str] = None) -> str:
++    return _validate_sha(container.get(key), path or key)
++
++
++def _validate_sha(value, path: str) -> str:
++    if not isinstance(value, str) or _SHA_RE.fullmatch(value) is None:
++        raise MalformedPayload(f"{path} must be a 40-character lowercase hex SHA")
++    return value
++
++
++def _expect_ref(container: dict, key: str, path: Optional[str] = None) -> str:
++    value = _expect_string(container, key, path)
++    if not value.startswith("refs/") or any(character.isspace() for character in value):
++        raise MalformedPayload(f"{path or key} must be a canonical refs/ value")
++    return value
++
++
++def _expect_branch(container: dict, key: str, path: str) -> str:
++    value = _expect_string(container, key, path)
++    if value.startswith("refs/") or value.startswith("/") or value.endswith("/"):
++        raise MalformedPayload(f"{path} must be a branch name")
++    if any(character.isspace() for character in value):
++        raise MalformedPayload(f"{path} must not contain whitespace")
++    return value
++
++
++def _matches_any(value: str, patterns: Sequence[str]) -> bool:
++    return any(fnmatchcase(value, pattern) for pattern in patterns)
++
++
++def _contains_default_skip_token(messages: Sequence[str]) -> bool:
++    combined = "\n".join(messages).casefold()
++    return "[skip ci]" in combined or "[ci skip]" in combined
+diff --git a/webhook/processor.py b/webhook/processor.py
+index e3a04ed..c072ce3 100644
+--- a/webhook/processor.py
++++ b/webhook/processor.py
+@@ -3 +3,4 @@
+-from typing import Mapping, Optional
++import hashlib
++import uuid
++from dataclasses import replace
++from typing import Dict, Mapping, Optional
+@@ -4,0 +8,7 @@ from typing import Mapping, Optional
++from .errors import (
++    MalformedHeaders,
++    MissingHeader,
++    PayloadTooLarge,
++    UnsupportedMediaType,
++)
++from .github import decode_payload, evaluate_policy, normalize_event, verify_signature
+@@ -6 +16 @@ from .models import DeliveryResult, TriggerPolicy
+-from .replay import ReplayCache
++from .replay import ReplayCache, Reservation
+@@ -16 +26,17 @@ class WebhookProcessor:
+-        raise NotImplementedError
++        if not isinstance(secrets, Mapping) or not secrets:
++            raise ValueError("at least one signing secret is required")
++        for key_id, secret in secrets.items():
++            if not isinstance(key_id, str) or not key_id:
++                raise ValueError("secret IDs must be non-empty strings")
++            if not isinstance(secret, (str, bytes)):
++                raise TypeError("secret values must be str or bytes")
++            if not secret:
++                raise ValueError("signing secrets must not be empty")
++        self._secrets = dict(secrets)
++        self._policy = policy or TriggerPolicy()
++        if self._policy.max_payload_bytes <= 0:
++            raise ValueError("max_payload_bytes must be positive")
++        self._replay_cache = replay_cache or ReplayCache(
++            ttl_seconds=self._policy.replay_ttl_seconds,
++            capacity=self._policy.replay_capacity,
++        )
+@@ -19 +45,95 @@ class WebhookProcessor:
+-        raise NotImplementedError
++        if not isinstance(body, bytes):
++            raise TypeError("body must be bytes")
++        if len(body) > self._policy.max_payload_bytes:
++            raise PayloadTooLarge(
++                f"payload exceeds {self._policy.max_payload_bytes} bytes"
++            )
++
++        normalized_headers = self._normalize_headers(headers)
++        self._validate_content_type(
++            self._required_header(normalized_headers, "content-type")
++        )
++        event_type = self._required_header(normalized_headers, "x-github-event")
++        delivery_id = self._normalize_delivery_id(
++            self._required_header(normalized_headers, "x-github-delivery")
++        )
++        signature = self._required_header(
++            normalized_headers,
++            "x-hub-signature-256",
++        )
++
++        key_id = verify_signature(body, self._secrets, signature)
++        payload = decode_payload(body)
++        fingerprint = hashlib.sha256(
++            event_type.encode("utf-8") + b"\0" + body
++        ).hexdigest()
++        reservation = self._replay_cache.reserve(delivery_id, fingerprint)
++        if reservation.duplicate:
++            if not isinstance(reservation.result, DeliveryResult):
++                raise RuntimeError("replay cache contains an invalid result")
++            return replace(reservation.result, duplicate=True)
++
++        try:
++            event = normalize_event(event_type, payload, delivery_id)
++            decision = evaluate_policy(event, self._policy)
++            result = DeliveryResult(
++                delivery_id=delivery_id,
++                signature_key_id=key_id,
++                event=event,
++                decision=decision,
++            )
++            self._replay_cache.commit(reservation, result)
++            return result
++        except Exception:
++            self._replay_cache.abort(reservation)
++            raise
++
++    @staticmethod
++    def _normalize_headers(headers: Mapping[str, str]) -> Dict[str, str]:
++        if not isinstance(headers, Mapping):
++            raise MalformedHeaders("headers must be a mapping")
++        normalized = {}
++        for name, value in headers.items():
++            if not isinstance(name, str) or not isinstance(value, str):
++                raise MalformedHeaders("header names and values must be strings")
++            lower_name = name.casefold()
++            if lower_name in normalized:
++                raise MalformedHeaders(f"duplicate header: {name}")
++            normalized[lower_name] = value
++        return normalized
++
++    @staticmethod
++    def _required_header(headers: Mapping[str, str], name: str) -> str:
++        value = headers.get(name)
++        if value is None:
++            raise MissingHeader(f"{name} is required")
++        if not value:
++            raise MalformedHeaders(f"{name} must not be empty")
++        return value
++
++    @staticmethod
++    def _validate_content_type(value: str) -> None:
++        parts = [part.strip() for part in value.split(";")]
++        if not parts or parts[0].casefold() != "application/json":
++            raise UnsupportedMediaType("Content-Type must be application/json")
++        for parameter in parts[1:]:
++            if "=" not in parameter:
++                raise UnsupportedMediaType("malformed Content-Type parameter")
++            name, parameter_value = (
++                item.strip().casefold() for item in parameter.split("=", 1)
++            )
++            if name != "charset" or parameter_value not in {"utf-8", '"utf-8"'}:
++                raise UnsupportedMediaType("only charset=utf-8 is supported")
++
++    @staticmethod
++    def _normalize_delivery_id(value: str) -> str:
++        try:
++            parsed = uuid.UUID(value)
++        except (ValueError, AttributeError) as exc:
++            raise MalformedHeaders("X-GitHub-Delivery must be a UUID") from exc
++        canonical = str(parsed)
++        if value != canonical:
++            raise MalformedHeaders(
++                "X-GitHub-Delivery must be a canonical lowercase UUID"
++            )
++        return canonical
+diff --git a/webhook/replay.py b/webhook/replay.py
+index edf15a5..dc4d103 100644
+--- a/webhook/replay.py
++++ b/webhook/replay.py
+@@ -2,0 +3,2 @@
++import threading
++import time
+@@ -4 +6,3 @@ from dataclasses import dataclass
+-from typing import Callable, Optional
++from typing import Callable, Dict, Optional
++
++from .errors import DeliveryInProgress, ReplayCapacityExceeded, ReplayConflict
+@@ -15,0 +20,10 @@ class Reservation:
++@dataclass
++class _Entry:
++    fingerprint: str
++    token: int
++    expires_at: float
++    sequence: int
++    committed: bool = False
++    result: object = None
++
++
+@@ -25 +39,12 @@ class ReplayCache:
+-        raise NotImplementedError
++        if ttl_seconds <= 0:
++            raise ValueError("ttl_seconds must be positive")
++        if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity <= 0:
++            raise ValueError("capacity must be a positive integer")
++
++        self._ttl_seconds = float(ttl_seconds)
++        self._capacity = capacity
++        self._clock = clock or time.monotonic
++        self._entries: Dict[str, _Entry] = {}
++        self._next_token = 1
++        self._next_sequence = 1
++        self._lock = threading.Lock()
+@@ -28 +53,39 @@ class ReplayCache:
+-        raise NotImplementedError
++        if not isinstance(delivery_id, str) or not delivery_id:
++            raise ValueError("delivery_id must be a non-empty string")
++        if not isinstance(fingerprint, str) or not fingerprint:
++            raise ValueError("fingerprint must be a non-empty string")
++
++        with self._lock:
++            now = self._clock()
++            self._prune_expired(now)
++            existing = self._entries.get(delivery_id)
++            if existing is not None:
++                if existing.fingerprint != fingerprint:
++                    raise ReplayConflict("delivery ID was already used for another request")
++                if not existing.committed:
++                    raise DeliveryInProgress("delivery is already being processed")
++                return Reservation(
++                    delivery_id=delivery_id,
++                    fingerprint=fingerprint,
++                    token=None,
++                    duplicate=True,
++                    result=existing.result,
++                )
++
++            self._make_room()
++            token = self._next_token
++            self._next_token += 1
++            sequence = self._next_sequence
++            self._next_sequence += 1
++            self._entries[delivery_id] = _Entry(
++                fingerprint=fingerprint,
++                token=token,
++                expires_at=now + self._ttl_seconds,
++                sequence=sequence,
++            )
++            return Reservation(
++                delivery_id=delivery_id,
++                fingerprint=fingerprint,
++                token=token,
++                duplicate=False,
++            )
+@@ -31 +94,11 @@ class ReplayCache:
+-        raise NotImplementedError
++        if reservation.duplicate or reservation.token is None:
++            raise ValueError("a duplicate reservation cannot be committed")
++        with self._lock:
++            now = self._clock()
++            self._prune_expired(now)
++            entry = self._entries.get(reservation.delivery_id)
++            if not self._is_current(entry, reservation):
++                raise ValueError("reservation is no longer current")
++            entry.committed = True
++            entry.result = result
++            entry.expires_at = now + self._ttl_seconds
+@@ -34 +107,7 @@ class ReplayCache:
+-        raise NotImplementedError
++        if reservation.duplicate or reservation.token is None:
++            return
++        with self._lock:
++            self._prune_expired(self._clock())
++            entry = self._entries.get(reservation.delivery_id)
++            if self._is_current(entry, reservation) and not entry.committed:
++                del self._entries[reservation.delivery_id]
+@@ -37 +116,32 @@ class ReplayCache:
+-        raise NotImplementedError
++        with self._lock:
++            self._prune_expired(self._clock())
++            return len(self._entries)
++
++    def _is_current(self, entry: Optional[_Entry], reservation: Reservation) -> bool:
++        return (
++            entry is not None
++            and entry.token == reservation.token
++            and entry.fingerprint == reservation.fingerprint
++        )
++
++    def _prune_expired(self, now: float) -> None:
++        expired = [
++            delivery_id
++            for delivery_id, entry in self._entries.items()
++            if entry.expires_at <= now
++        ]
++        for delivery_id in expired:
++            del self._entries[delivery_id]
++
++    def _make_room(self) -> None:
++        if len(self._entries) < self._capacity:
++            return
++        committed = [
++            (entry.sequence, delivery_id)
++            for delivery_id, entry in self._entries.items()
++            if entry.committed
++        ]
++        if not committed:
++            raise ReplayCapacityExceeded("replay cache is full of in-progress deliveries")
++        _, oldest_delivery_id = min(committed)
++        del self._entries[oldest_delivery_id]

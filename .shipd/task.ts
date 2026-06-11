@@ -2,14 +2,14 @@ import { defineTask } from "./.types/prometheus";
 
 export default defineTask({
   proposal: {
-    title: "GitHub Webhook Signature Verification for Vela",
+    title: "Production-Grade GitHub Webhook Delivery Pipeline for Vela",
     family: "other_research_engineering",
-    sourceType: "public_repo",
-    sourceUrl: "https://docs.github.com/en/webhooks/webhook-events-and-payloads#push",
+    sourceType: "production_spec",
+    sourceUrl: "https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries",
     idea:
-      "Implement trustworthy GitHub webhook handling for Vela by verifying HMAC SHA-256 signatures and parsing the repository, ref, and commit from push payloads.",
-    expectedSkill: "senior",
-    expectedHorizon: "eight_hours",
+      "Implement a secure, deterministic GitHub webhook delivery pipeline for Vela with rotating-secret HMAC authentication, strict JSON parsing, multi-event normalization, policy evaluation, and bounded thread-safe replay protection.",
+    expectedSkill: "staff",
+    expectedHorizon: "one_day",
   },
 
   workspace: {
@@ -25,73 +25,105 @@ export default defineTask({
 
   commands: {
     setup: "bash .shipd/public/setup.sh",
-    verify: "python .shipd/private/hidden_tests/verifier.py",
-    applyReference: "git apply .shipd/private/reference.patch",
+    verify: ".venv/bin/python .shipd/private/hidden_tests/verifier.py",
+    applyReference: "git apply --unidiff-zero .shipd/private/reference.patch",
   },
 
   rubric: {
-    label: "GitHub webhook submission handling",
-    totalPoints: 10,
+    label: "GitHub webhook delivery pipeline",
+    totalPoints: 20,
     children: [
       {
-        label: "Understands the webhook gap",
-        points: 3,
-        children: [
-          {
-            label: "Explains that signature verification always passes and push fields are empty",
-            points: 2,
-            kind: "qualitative",
-          },
-          {
-            label: "Explains why HMAC-SHA256 verification with compare_digest restores trust",
-            points: 1,
-            kind: "qualitative",
-          },
-        ],
-      },
-      {
-        label: "Webhook handler implementation",
+        label: "Authentication and decoding",
         points: 4,
         children: [
           {
-            label: "verify_signature rejects missing and invalid X-Hub-Signature-256 headers",
+            label: "Canonical HMAC-SHA256 verification checks every rotating secret",
             points: 2,
             kind: "deterministic",
           },
           {
-            label: "parse_push_event returns repo, ref, and commit from a push payload",
-            points: 1,
-            kind: "deterministic",
-          },
-          {
-            label: "Keeps the public function signatures in webhook/github.py unchanged",
-            points: 1,
+            label: "Strict UTF-8 JSON rejects duplicates, non-finite values, and deep payloads",
+            points: 2,
             kind: "deterministic",
           },
         ],
       },
       {
-        label: "Verification evidence",
-        points: 2,
+        label: "Event normalization",
+        points: 5,
         children: [
           {
-            label: "tests/test_github_webhook.py covers valid signatures, rejections, and push parsing",
-            points: 1,
+            label: "Push actions, SHAs, commits, messages, and changed files are normalized",
+            points: 2,
             kind: "deterministic",
           },
           {
-            label: "metrics.json includes tests_passed, tests_total, invalid_signature_rejected, and push_fields_extracted",
+            label: "Pull request refs, fork state, actions, and merged SHA are normalized",
+            points: 2,
+            kind: "deterministic",
+          },
+          {
+            label: "Merge group actions and queue/base refs are normalized",
             points: 1,
             kind: "deterministic",
           },
         ],
       },
       {
-        label: "Submission report",
+        label: "Policy evaluation",
+        points: 3,
+        children: [
+          {
+            label: "Repository, ref, sender, and skip-token precedence is exact",
+            points: 2,
+            kind: "deterministic",
+          },
+          {
+            label: "Deletion, pull request, fork, draft, and merge-group rules are enforced",
+            points: 1,
+            kind: "deterministic",
+          },
+        ],
+      },
+      {
+        label: "Replay protection",
+        points: 4,
+        children: [
+          {
+            label: "Reserve, duplicate, conflict, commit, abort, and expiry states are correct",
+            points: 2,
+            kind: "deterministic",
+          },
+          {
+            label: "Capacity, stale generations, deterministic eviction, and concurrency are safe",
+            points: 2,
+            kind: "deterministic",
+          },
+        ],
+      },
+      {
+        label: "End-to-end processor",
+        points: 3,
+        children: [
+          {
+            label: "Headers, content type, UUID, size, and raw-body ordering are validated",
+            points: 2,
+            kind: "deterministic",
+          },
+          {
+            label: "Results, rejected decisions, exact duplicates, conflicts, and retries compose",
+            points: 1,
+            kind: "deterministic",
+          },
+        ],
+      },
+      {
+        label: "Evidence",
         points: 1,
         children: [
           {
-            label: "report.md documents setup, the pytest command, and expected webhook behavior",
+            label: "Metrics and report accurately document a reproducible passing implementation",
             points: 1,
             kind: "qualitative",
           },

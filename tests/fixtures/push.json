@@ -1,7 +1,43 @@
 {
   "ref": "refs/heads/main",
-  "after": "abc123def4567890",
+  "before": "1111111111111111111111111111111111111111",
+  "after": "2222222222222222222222222222222222222222",
+  "created": false,
+  "deleted": false,
+  "forced": false,
   "repository": {
     "full_name": "vela-org/demo-repo"
-  }
+  },
+  "pusher": {
+    "name": "octocat"
+  },
+  "sender": {
+    "login": "octocat"
+  },
+  "installation": {
+    "id": 12345
+  },
+  "head_commit": {
+    "id": "2222222222222222222222222222222222222222",
+    "message": "Ship webhook delivery processing",
+    "added": ["webhook/processor.py"],
+    "modified": ["webhook/github.py"],
+    "removed": []
+  },
+  "commits": [
+    {
+      "id": "2222222222222222222222222222222222222222",
+      "message": "Ship webhook delivery processing",
+      "added": ["webhook/processor.py"],
+      "modified": ["webhook/github.py"],
+      "removed": []
+    },
+    {
+      "id": "3333333333333333333333333333333333333333",
+      "message": "Update tests",
+      "added": [],
+      "modified": ["tests/test_github_webhook.py", "webhook/github.py"],
+      "removed": ["tests/legacy.py"]
+    }
+  ]
 }

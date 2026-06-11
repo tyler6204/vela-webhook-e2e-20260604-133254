@@ -1,0 +1,32 @@
+{
+  "action": "synchronize",
+  "number": 42,
+  "repository": {
+    "full_name": "vela-org/demo-repo"
+  },
+  "sender": {
+    "login": "contributor"
+  },
+  "installation": {
+    "id": 12345
+  },
+  "pull_request": {
+    "draft": false,
+    "merged": false,
+    "merge_commit_sha": null,
+    "head": {
+      "ref": "feature/webhooks",
+      "sha": "4444444444444444444444444444444444444444",
+      "repo": {
+        "full_name": "vela-org/demo-repo"
+      }
+    },
+    "base": {
+      "ref": "main",
+      "sha": "5555555555555555555555555555555555555555",
+      "repo": {
+        "full_name": "vela-org/demo-repo"
+      }
+    }
+  }
+}
