@@ -1,6 +1,6 @@
 diff --git a/metrics.json b/metrics.json
 new file mode 100644
-index 0000000..f9ad8d4
+index 0000000000000000000000000000000000000000..f9ad8d4391f67d1d4313e88601c0105298d9bf3b
 --- /dev/null
 +++ b/metrics.json
 @@ -0,0 +1,9 @@
@@ -15,7 +15,7 @@ index 0000000..f9ad8d4
 +}
 diff --git a/report.md b/report.md
 new file mode 100644
-index 0000000..075fd2e
+index 0000000000000000000000000000000000000000..075fd2e2f64e13721f86bcb1bbe9c300ca75e371
 --- /dev/null
 +++ b/report.md
 @@ -0,0 +1,24 @@
@@ -44,10 +44,12 @@ index 0000000..075fd2e
 +- Validates case-insensitive request headers, media type, payload size, and canonical delivery
 +  UUIDs before returning a `DeliveryResult`.
 diff --git a/webhook/github.py b/webhook/github.py
-index 2da2b4f..64ac0fb 100644
+index 2da2b4f51bd128326d515ffc83f52e185b650648..64ac0fb4b879f37fc78204e66eb66dddbff178ea 100644
 --- a/webhook/github.py
 +++ b/webhook/github.py
-@@ -3 +3,6 @@
+@@ -1,11 +1,40 @@
+ """GitHub-specific authentication, decoding, normalization, and policy."""
+ 
 -from typing import Mapping, Optional, Union
 +import hashlib
 +import hmac
@@ -55,7 +57,7 @@ index 2da2b4f..64ac0fb 100644
 +import re
 +from fnmatch import fnmatchcase
 +from typing import Iterable, Mapping, Optional, Sequence, Union
-@@ -4,0 +10,7 @@ from typing import Mapping, Optional, Union
+ 
 +from .errors import (
 +    InvalidSignature,
 +    MalformedPayload,
@@ -63,7 +65,10 @@ index 2da2b4f..64ac0fb 100644
 +    MissingHeader,
 +    UnsupportedEvent,
 +)
-@@ -8,0 +21,17 @@ SecretValue = Union[str, bytes]
+ from .models import NormalizedEvent, PolicyDecision, TriggerPolicy
+ 
+ SecretValue = Union[str, bytes]
+ 
 +_SIGNATURE_RE = re.compile(r"sha256=([0-9a-f]{64})")
 +_SHA_RE = re.compile(r"[0-9a-f]{40}")
 +_SUPPORTED_EVENTS = {"push", "pull_request", "merge_group"}
@@ -81,7 +86,13 @@ index 2da2b4f..64ac0fb 100644
 +class _DuplicateKey(ValueError):
 +    pass
 +
-@@ -16 +45,38 @@ def verify_signature(
+ 
+ def verify_signature(
+     payload_body: bytes,
+@@ -13,19 +42,405 @@ def verify_signature(
+     signature_header: Optional[str],
+ ) -> str:
+     """Return the ID of the secret matching a canonical GitHub SHA-256 signature."""
 -    raise NotImplementedError
 +    if signature_header is None:
 +        raise MissingHeader("X-Hub-Signature-256 is required")
@@ -121,7 +132,10 @@ index 2da2b4f..64ac0fb 100644
 +    if not matches:
 +        raise InvalidSignature("signature does not match any configured secret")
 +    return matches[0]
-@@ -21 +87,32 @@ def decode_payload(payload_body: bytes) -> dict:
+ 
+ 
+ def decode_payload(payload_body: bytes) -> dict:
+     """Decode one strict UTF-8 JSON object with no duplicate keys or non-finite numbers."""
 -    raise NotImplementedError
 +    if not isinstance(payload_body, bytes):
 +        raise TypeError("payload_body must be bytes")
@@ -155,7 +169,10 @@ index 2da2b4f..64ac0fb 100644
 +        raise MalformedPayload("payload must be a JSON object")
 +    _validate_json_depth(payload)
 +    return payload
-@@ -26 +123,13 @@ def normalize_event(event_type: str, payload: dict, delivery_id: str) -> Normali
+ 
+ 
+ def normalize_event(event_type: str, payload: dict, delivery_id: str) -> NormalizedEvent:
+     """Normalize a supported GitHub event into the stable CI trigger model."""
 -    raise NotImplementedError
 +    if event_type not in _SUPPORTED_EVENTS:
 +        raise UnsupportedEvent(f"unsupported GitHub event: {event_type}")
@@ -170,7 +187,10 @@ index 2da2b4f..64ac0fb 100644
 +    if event_type == "pull_request":
 +        return _normalize_pull_request(payload, delivery_id, common)
 +    return _normalize_merge_group(payload, delivery_id, common)
-@@ -31 +140,307 @@ def evaluate_policy(event: NormalizedEvent, policy: TriggerPolicy) -> PolicyDeci
+ 
+ 
+ def evaluate_policy(event: NormalizedEvent, policy: TriggerPolicy) -> PolicyDecision:
+     """Return a deterministic accept/reject decision for a normalized event."""
 -    raise NotImplementedError
 +    if event.event not in policy.allowed_events:
 +        return PolicyDecision(False, "event_not_allowed")
@@ -480,16 +500,18 @@ index 2da2b4f..64ac0fb 100644
 +    combined = "\n".join(messages).casefold()
 +    return "[skip ci]" in combined or "[ci skip]" in combined
 diff --git a/webhook/processor.py b/webhook/processor.py
-index e3a04ed..b8741d0 100644
+index e3a04edea221269ca8e6348dda6f3c1fd2555d84..b8741d05a35cfd9a06ddf0a9f5b2d3ff66485bbf 100644
 --- a/webhook/processor.py
 +++ b/webhook/processor.py
-@@ -3 +3,4 @@
+@@ -1,7 +1,17 @@
+ """End-to-end GitHub webhook delivery processor."""
+ 
 -from typing import Mapping, Optional
 +import hashlib
 +import uuid
 +from dataclasses import replace
 +from typing import Dict, Mapping, Optional
-@@ -4,0 +8,7 @@ from typing import Mapping, Optional
+ 
 +from .errors import (
 +    MalformedHeaders,
 +    MissingHeader,
@@ -497,7 +519,13 @@ index e3a04ed..b8741d0 100644
 +    UnsupportedMediaType,
 +)
 +from .github import decode_payload, evaluate_policy, normalize_event, verify_signature
-@@ -16 +26,25 @@ class WebhookProcessor:
+ from .models import DeliveryResult, TriggerPolicy
+ from .replay import ReplayCache
+ 
+@@ -13,7 +23,128 @@ class WebhookProcessor:
+         policy: Optional[TriggerPolicy] = None,
+         replay_cache: Optional[ReplayCache] = None,
+     ) -> None:
 -        raise NotImplementedError
 +        if not isinstance(secrets, Mapping) or not secrets:
 +            raise ValueError("at least one signing secret is required")
@@ -524,7 +552,8 @@ index e3a04ed..b8741d0 100644
 +                capacity=self._policy.replay_capacity,
 +            )
 +        )
-@@ -19 +53,98 @@ class WebhookProcessor:
+ 
+     def process(self, headers: Mapping[str, str], body: bytes) -> DeliveryResult:
 -        raise NotImplementedError
 +        if not isinstance(body, bytes):
 +            raise TypeError("body must be bytes")
@@ -625,19 +654,27 @@ index e3a04ed..b8741d0 100644
 +            )
 +        return canonical
 diff --git a/webhook/replay.py b/webhook/replay.py
-index edf15a5..146d59a 100644
+index edf15a5c906ad74624bcc2f77c023c760b544883..146d59a30b9ea00aaf53f0a47e66bf86dfad8f9b 100644
 --- a/webhook/replay.py
 +++ b/webhook/replay.py
-@@ -2,0 +3,3 @@
+@@ -1,7 +1,12 @@
+ """Bounded, thread-safe replay protection for GitHub delivery IDs."""
+ 
 +import math
 +import threading
 +import time
-@@ -4 +7,3 @@ from dataclasses import dataclass
+ from dataclasses import dataclass
 -from typing import Callable, Optional
 +from typing import Callable, Dict, Optional
 +
 +from .errors import DeliveryInProgress, ReplayCapacityExceeded, ReplayConflict
-@@ -15,0 +21,10 @@ class Reservation:
+ 
+ 
+ @dataclass(frozen=True)
+@@ -13,6 +18,16 @@ class Reservation:
+     result: object = None
+ 
+ 
 +@dataclass
 +class _Entry:
 +    fingerprint: str
@@ -648,7 +685,13 @@ index edf15a5..146d59a 100644
 +    result: object = None
 +
 +
-@@ -25 +40,19 @@ class ReplayCache:
+ class ReplayCache:
+     """Reserve, commit, and abort delivery IDs atomically."""
+ 
+@@ -22,16 +37,129 @@ class ReplayCache:
+         capacity: int,
+         clock: Optional[Callable[[], float]] = None,
+     ) -> None:
 -        raise NotImplementedError
 +        if (
 +            isinstance(ttl_seconds, bool)
@@ -669,7 +712,8 @@ index edf15a5..146d59a 100644
 +        self._next_token = 1
 +        self._next_sequence = 1
 +        self._lock = threading.Lock()
-@@ -28 +61,39 @@ class ReplayCache:
+ 
+     def reserve(self, delivery_id: str, fingerprint: str) -> Reservation:
 -        raise NotImplementedError
 +        if not isinstance(delivery_id, str) or not delivery_id:
 +            raise ValueError("delivery_id must be a non-empty string")
@@ -710,7 +754,8 @@ index edf15a5..146d59a 100644
 +                token=token,
 +                duplicate=False,
 +            )
-@@ -31 +102,11 @@ class ReplayCache:
+ 
+     def commit(self, reservation: Reservation, result: object) -> None:
 -        raise NotImplementedError
 +        if reservation.duplicate or reservation.token is None:
 +            raise ValueError("a duplicate reservation cannot be committed")
@@ -723,7 +768,8 @@ index edf15a5..146d59a 100644
 +            entry.committed = True
 +            entry.result = result
 +            entry.expires_at = now + self._ttl_seconds
-@@ -34 +115,7 @@ class ReplayCache:
+ 
+     def abort(self, reservation: Reservation) -> None:
 -        raise NotImplementedError
 +        if reservation.duplicate or reservation.token is None:
 +            return
@@ -732,7 +778,8 @@ index edf15a5..146d59a 100644
 +            entry = self._entries.get(reservation.delivery_id)
 +            if self._is_current(entry, reservation) and not entry.committed:
 +                del self._entries[reservation.delivery_id]
-@@ -37 +124,42 @@ class ReplayCache:
+ 
+     def __len__(self) -> int:
 -        raise NotImplementedError
 +        with self._lock:
 +            self._prune_expired(self._now())

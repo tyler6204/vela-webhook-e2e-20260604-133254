@@ -28,7 +28,7 @@ export default defineTask({
   commands: {
     setup: "bash .shipd/public/setup.sh",
     verify: ".venv/bin/python .shipd/private/hidden_tests/verifier.py",
-    applyReference: "git apply --unidiff-zero .shipd/private/reference.patch",
+    applyReference: "git apply .shipd/private/reference.patch",
   },
 
   rubric: {
